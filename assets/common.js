@@ -5,7 +5,7 @@
   // Accept a pasted URL with /rest/v1/ or a trailing slash: keep only https://<project>.supabase.co
   if (cfg.SUPABASE_URL) cfg.SUPABASE_URL = String(cfg.SUPABASE_URL).trim().replace(/\/(rest|auth)\/v1\/?.*$/i, "").replace(/\/+$/, "");
   if (cfg.SUPABASE_ANON_KEY) cfg.SUPABASE_ANON_KEY = String(cfg.SUPABASE_ANON_KEY).trim();
-  const configured = !!(cfg.SUPABASE_URL && !cfg.SUPABASE_URL.includes("YOUR-PROJECT") && cfg.SUPABASE_ANON_KEY && !cfg.SUPABASE_ANON_KEY.includes("YOUR-"));
+  const configured = !!(window.supabase && cfg.SUPABASE_URL && /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/i.test(cfg.SUPABASE_URL) && cfg.SUPABASE_ANON_KEY && !/YOUR-/i.test(cfg.SUPABASE_ANON_KEY));
 
   // ---- icons (Lucide-style, inline SVG) ----
   const P = {
@@ -192,9 +192,17 @@
     },
 
     notConfiguredHtml() {
-      return `<div class="corner">${theme.button()}</div><div class="center-wrap"><div class="card" style="max-width:560px">
-        <div class="empty" style="padding:10px"><div class="ic">${icon("settings")}</div><h3>Setup Needed</h3>
-        <p>Open <code>config.js</code> and fill in <b>SUPABASE_URL</b> (Project URL) and <b>SUPABASE_ANON_KEY</b> (publishable key) from your Supabase project. See <code>README.md</code>.</p></div></div></div>`;
+      // Tell the person exactly what is wrong with config.js
+      let why;
+      if (!window.APP_CONFIG) why = `<b>config.js</b> could not be read. Either the file is missing from your site, or it has a typo — usually a <b>missing comma</b> at the end of a line or a missing quote. Open it on GitHub, compare it with the template, and fix the line you changed last.`;
+      else if (!cfg.SUPABASE_URL || /YOUR-PROJECT/i.test(cfg.SUPABASE_URL)) why = `<b>SUPABASE_URL</b> in <code>config.js</code> still has the placeholder. Put your Project URL there, e.g. <code>https://abcd1234.supabase.co</code>. The file may have been replaced when you uploaded the new version.`;
+      else if (!cfg.SUPABASE_ANON_KEY || /YOUR-/i.test(cfg.SUPABASE_ANON_KEY)) why = `<b>SUPABASE_ANON_KEY</b> in <code>config.js</code> still has the placeholder. Put your publishable key (<code>sb_publishable_…</code>) there.`;
+      else if (!/^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/i.test(cfg.SUPABASE_URL)) why = `<b>SUPABASE_URL</b> does not look like a Supabase Project URL: <code>${App.esc(cfg.SUPABASE_URL)}</code>. It should look like <code>https://abcd1234.supabase.co</code>.`;
+      else if (!window.supabase) why = `The Supabase library did not load. Make sure the <code>assets/vendor/</code> folder was uploaded to GitHub with the other files.`;
+      else why = `Something in <code>config.js</code> is not right. Check <b>SUPABASE_URL</b> and <b>SUPABASE_ANON_KEY</b>.`;
+      return `<div class="corner">${theme.button()}</div><div class="center-wrap" style="min-height:100vh"><div class="card" style="max-width:600px">
+        <div class="empty" style="padding:10px"><div class="ic">${icon("settings")}</div><h3>Setup Needed</h3><p style="max-width:500px">${why}</p>
+        <p class="small muted" style="margin:0">After fixing it, hard-refresh this page (Cmd/Ctrl + Shift + R).</p></div></div></div>`;
     },
   };
   window.App = App;
