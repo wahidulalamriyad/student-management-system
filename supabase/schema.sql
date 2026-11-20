@@ -1,3 +1,4 @@
+-- © 2026 Wahidul Alam Riyad. All rights reserved. Proprietary — see LICENSE.
 -- =============================================================================
 --  Attendance Management System — Supabase schema
 --  Run this once in Supabase: Dashboard ▸ SQL Editor ▸ New query ▸ paste ▸ Run.
@@ -98,6 +99,16 @@ create table if not exists public.failed_attempts (
 
 alter table public.students add column if not exists seq int not null default 0;
 
+-- v2 additions (safe to re-run on an existing database)
+alter table public.attendance add column if not exists status text not null default 'present'
+  check (status in ('present', 'late', 'excused'));                     -- excused counts as attended
+alter table public.attendance add column if not exists note text check (note is null or length(note) <= 200);
+alter table public.sections add column if not exists late_after_minutes int
+  check (late_after_minutes is null or late_after_minutes between 1 and 180);   -- null = no late marking
+alter table public.sections add column if not exists min_attendance_pct int not null default 80
+  check (min_attendance_pct between 0 and 100);
+alter table public.classes add column if not exists session_started_at timestamptz;   -- start of the latest PIN session
+
 create index if not exists attendance_class_idx on public.attendance (class_id);
 create index if not exists classes_term_idx     on public.classes (term_id);
 create index if not exists terms_section_idx    on public.terms (section_id);
@@ -196,7 +207,8 @@ begin
 
   insert into class_secrets (class_id, secret) values (p_class_id, gen_random_bytes(32))
     on conflict (class_id) do update set secret = excluded.secret;
-  update classes set is_open = true, opened_at = coalesce(opened_at, now()), expires_at = v_exp
+  update classes set is_open = true, opened_at = coalesce(opened_at, now()), session_started_at = now(), expires_at = v_exp,
+         class_date = coalesce(class_date, (now() at time zone 'Asia/Dhaka')::date)
    where id = p_class_id;
   return json_build_object('ok', true, 'expires_at', v_exp);
 end $$;
@@ -224,7 +236,7 @@ create or replace function public.current_pin(p_class_id uuid)
 returns json language plpgsql security definer set search_path = public, extensions as $$
 declare c record; v_secret bytea; v_step bigint; v_left numeric; v_present int; v_enrolled int;
 begin
-  select cl.*, t.section_id into c from classes cl join terms t on t.id = cl.term_id
+  select cl.*, t.section_id, se.late_after_minutes into c from classes cl join terms t on t.id = cl.term_id join sections se on se.id = t.section_id
    where cl.id = p_class_id and cl.owner = auth.uid();
   if not found then raise exception 'Class not found'; end if;
   select count(*) into v_present from attendance where class_id = p_class_id;
@@ -238,8 +250,26 @@ begin
   v_left := (v_step + 1) * _pin_period() - extract(epoch from now());
   return json_build_object('is_open', true, 'pin', _pin_for(v_secret, v_step), 'seconds_left', round(v_left, 2),
                            'period', _pin_period(), 'expires_at', c.expires_at, 'server_time', now(),
-                           'present', v_present, 'enrolled', v_enrolled);
+                           'present', v_present, 'enrolled', v_enrolled,
+                           'late_at', case when c.late_after_minutes is null then null
+                                           else c.session_started_at + make_interval(mins => c.late_after_minutes) end);
 end $$;
+
+-- A student's own totals in a section (shown only after a valid PIN check-in)
+create or replace function public._student_summary(p_section uuid, p_student text)
+returns json language sql stable security definer set search_path = public as $$
+  with held as (
+    select cl.id from classes cl join terms t on t.id = cl.term_id
+     where t.section_id = p_section
+       and (cl.opened_at is not null or exists (select 1 from attendance a where a.class_id = cl.id))
+  ), mine as (
+    select a.status from attendance a join held h on h.id = a.class_id where a.student_id = p_student
+  ), m as (select (select count(*) from held) as held, (select count(*) from mine) as attended,
+                  (select count(*) from mine where status = 'late') as late,
+                  (select min_attendance_pct from sections where id = p_section) as min_pct)
+  select json_build_object('held', held, 'attended', attended, 'late', late, 'min_pct', min_pct,
+                           'pct', case when held = 0 then null else round(attended * 100.0 / held) end) from m
+$$;
 
 -- -----------------------------------------------------------------------------
 --  Public functions (students, no login)
@@ -268,7 +298,7 @@ declare
   v_id text := upper(regexp_replace(coalesce(p_student_id, ''), '\s', '', 'g'));
   v_pin text := regexp_replace(coalesce(p_pin, ''), '\D', '', 'g');
   v_dev text := left(nullif(trim(coalesce(p_device, '')), ''), 64);
-  s record; c record; v_secret bytea; v_step bigint; v_name text; v_fail int; v_when timestamptz;
+  s record; c record; v_secret bytea; v_step bigint; v_name text; v_fail int; v_when timestamptz; v_status text;
   max_attempts constant int := 5;
 begin
   if length(v_id) = 0 or length(v_id) > 30 then
@@ -278,10 +308,10 @@ begin
     return json_build_object('ok', false, 'code', 'bad_pin', 'message', 'The PIN has 6 digits.');
   end if;
 
-  select id, owner, one_device_per_class into s from sections where public_token = p_token;
+  select id, owner, one_device_per_class, late_after_minutes into s from sections where public_token = p_token;
   if not found then return json_build_object('ok', false, 'code', 'invalid_link', 'message', 'This attendance link is not valid.'); end if;
 
-  select cl.id, cl.number, t.name as term into c
+  select cl.id, cl.number, cl.session_started_at, t.name as term into c
     from classes cl join terms t on t.id = cl.term_id
    where t.section_id = s.id and cl.is_open and cl.expires_at > now()
    order by cl.expires_at desc limit 1;
@@ -290,10 +320,11 @@ begin
   end if;
 
   -- already recorded? (idempotent, no duplicates)
-  select submitted_at into v_when from attendance where class_id = c.id and student_id = v_id;
+  select submitted_at, status into v_when, v_status from attendance where class_id = c.id and student_id = v_id;
   if found then
     return json_build_object('ok', true, 'code', 'already', 'message', 'Your attendance for this class is already recorded.',
-                             'term', c.term, 'class', c.number, 'at', v_when);
+                             'term', c.term, 'class', c.number, 'at', v_when, 'status', v_status,
+                             'summary', _student_summary(s.id, v_id));
   end if;
 
   select attempts into v_fail from failed_attempts where class_id = c.id and student_id = v_id;
@@ -324,19 +355,25 @@ begin
                              'message', 'This device was already used to record another student in this class.');
   end if;
 
-  insert into attendance (owner, class_id, student_id, student_name, source, device_id)
-  values (s.owner, c.id, v_id, coalesce(v_name, ''), 'pin', v_dev)
+  v_status := case when s.late_after_minutes is not null and c.session_started_at is not null
+                     and now() > c.session_started_at + make_interval(mins => s.late_after_minutes)
+                   then 'late' else 'present' end;
+  insert into attendance (owner, class_id, student_id, student_name, source, device_id, status)
+  values (s.owner, c.id, v_id, coalesce(v_name, ''), 'pin', v_dev, v_status)
   on conflict (class_id, student_id) do nothing;
   delete from failed_attempts where class_id = c.id and student_id = v_id;
 
-  return json_build_object('ok', true, 'code', 'recorded', 'message', 'Attendance recorded.',
-                           'name', v_name, 'term', c.term, 'class', c.number, 'at', now());
+  return json_build_object('ok', true, 'code', 'recorded',
+                           'message', case when v_status = 'late' then 'Attendance recorded (late).' else 'Attendance recorded.' end,
+                           'name', v_name, 'term', c.term, 'class', c.number, 'at', now(), 'status', v_status,
+                           'summary', _student_summary(s.id, v_id));
 end $$;
 
 -- -----------------------------------------------------------------------------
 --  Who may call what
 -- -----------------------------------------------------------------------------
 revoke all on function public._pin_for(bytea, bigint)                  from public, anon, authenticated;
+revoke all on function public._student_summary(uuid, text)             from public, anon, authenticated;
 revoke all on function public.open_class(uuid, int)                    from public, anon;
 revoke all on function public.extend_class(uuid, int)                  from public, anon;
 revoke all on function public.close_class(uuid)                        from public, anon;

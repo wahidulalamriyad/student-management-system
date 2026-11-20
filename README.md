@@ -1,125 +1,122 @@
 # Class Attendance — rotating-PIN check-in
 
-A free, static web app for taking class attendance. It runs on **GitHub Pages**, and **Supabase** (free tier) is the database.
+> **© 2026 Wahidul Alam Riyad. All rights reserved.**
+> This software is proprietary. You may not copy, modify, redistribute, host, sell or use it, in whole or in part, without the author's prior written permission. See [LICENSE](LICENSE).
 
-- **Faculty (admin):**
-  - Add intakes, courses, sections, terms (Mid / Final), classes and student lists (upload the Excel list).
-  - Open a class to show a big **6-digit PIN that changes every 15 seconds**.
-  - Export attendance to **Excel**.
-- **Students:** each section has **one fixed public link**. Students open it, type their **Student ID** and the PIN on the screen, and attendance is recorded for the class that is open right now.
-- **Integrity rules:**
-  - One record per student per class (no duplicates).
-  - The ID must be on the uploaded list.
-  - 5 wrong PINs lock that ID for that class.
-  - Optional: one phone per student per class.
-  - The PIN is made on the server and never exists in the student page.
+A free, static web app for taking class attendance, with light and dark mode.
 
-| Page | Who | What |
-|---|---|---|
-| `admin.html` | Faculty | Sign in, manage everything, export Excel |
-| `pin.html?class=…` | Faculty (classroom screen) | Start / extend / end attendance, show PIN + QR + live count |
-| `attend.html?s=…` | Students | Enter Student ID + PIN |
+- **Hosting:** the site runs on **GitHub Pages**.
+- **Database:** **Supabase** (free tier).
+- **How check-in works:** students open one fixed link for their section and type their **Student ID** and the **6-digit PIN on your screen**. The PIN changes every 15 seconds.
 
----
+## Features
 
-## 1. Set up Supabase (one time, ~5 minutes)
+**Faculty (`admin.html`)**
+- **Dashboard:**
+  - All your sections as cards, each with average attendance.
+  - Live "attendance is open" banners.
+  - Search and filter by intake.
+- **Intakes, courses and sections:**
+  - Intakes and courses can be added, renamed and deleted.
+  - A new section gets *Mid Term* and *Final Term* with as many classes as you choose. You can create a new intake or course from the same form.
+- **Overview tab:**
+  - Attendance-by-class chart.
+  - Distribution bands.
+  - The list of students **below the minimum %**, with a one-click "copy IDs".
+  - Counts of on-time, late, excused, PIN and manual records.
+- **Classes tab:**
+  - Start, reopen or open the PIN screen for each class.
+  - Edit a class's date and topic.
+  - **Mark everyone present**, clear attendance, add or delete classes, and add, rename or delete terms.
+- **Students tab:**
+  - Upload the *Valid Student List* (.xlsx / .csv) and preview it before importing.
+  - Add or edit a single student.
+  - Search, filter (below %, 100%) and sort.
+  - Download the list or a template.
+  - Click a student to see their **attendance profile** and change any mark.
+- **Attendance sheet tab:**
+  - A grid of every student × class.
+  - Click a cell to mark **Present / Late / Excused / Absent**.
+  - Click a class number for bulk actions.
+  - Print.
+- **Check-in log tab:**
+  - Every record with time, status, PIN or manual source, and device.
+  - **Shared-device warnings** flag one phone checking in two students.
+- **Settings tab:**
+  - **Late after N minutes**.
+  - **Minimum attendance %**.
+  - One-device-per-class rule.
+  - Regenerate the student link.
+  - Delete the section, which requires typing the section name to confirm.
+- **Excel export:** Info, Summary, one sheet per term (1/0, ready for the Portfolio), Detail (P/L/E/A), Classes, Check-in Log.
+- **Account:** change your password, and recover it by email.
 
-1. Go to <https://supabase.com>, sign in and create a **New project**. Any name works. Pick the Singapore region; it's closest to Dhaka.
-2. Open **SQL Editor ▸ New query**, paste the whole of [`supabase/schema.sql`](supabase/schema.sql), and click **Run**. The script is safe to run again later.
-3. Create your faculty login in **Authentication ▸ Users ▸ Add user ▸ Create new user**. Enter your email and a password, and tick *Auto Confirm User*.
-4. Stop strangers from signing up: **Authentication ▸ Sign In / Providers ▸** turn off **Allow new users to sign up**.
-5. Copy your keys from **Project Settings ▸ API**:
-   - **Project URL**, which looks like `https://abcd1234.supabase.co`
-   - **anon public** key (labelled *Publishable key* in newer dashboards)
+**Classroom PIN screen (`pin.html`)**
+- **The PIN:** large digits that flip when the PIN changes, with a countdown bar.
+- **Joining:** a QR code for the student link.
+- **Live progress:** a ring with present / enrolled, a late counter and a live check-in feed.
+- **Controls:**
+  - Choose the session length (3–30 min), then **+5 min** or **End**.
+  - **Full screen** with the `F` key; hide the side panel with the `H` key.
+  - A "Next class" button.
 
-## 2. Configure the app
+**Students (`attend.html`)**
+- **Status:** shows whether attendance is open, with a countdown to closing.
+- **Entering the PIN:** six digit boxes with auto-advance and paste support. The form submits by itself when all 6 digits are typed.
+- **Confirmation:** an on-time / late badge, and the student's **own attendance %** so far. This is shown only after a valid PIN check-in, so nobody can look up another student by ID.
 
-Edit **`config.js`**:
-
-```js
-SUPABASE_URL: "https://abcd1234.supabase.co",
-SUPABASE_ANON_KEY: "eyJhbGciOi...",          // the anon / publishable key — NOT the service_role key
-STUDENT_ID_PATTERN: "^\\d{2}-\\d{5}-\\d$",   // AIUB format 22-48341-3; set to "" to accept any ID
-```
-
-The anon key is meant to be public. Every table is locked by Row Level Security, so with this key students can only call the two check-in functions. **Never** put the `service_role` key in this file.
-
-## 3. Deploy on GitHub Pages
-
-1. Create a new GitHub repository, e.g. `attendance`. It can be public.
-2. Upload every file in this folder, keeping the folder structure: `index.html`, `admin.html`, `attend.html`, `pin.html`, `config.js`, `.nojekyll`, `assets/`, `supabase/`, `templates/`.
-   - Use **Add file ▸ Upload files** and drag the files in, or use `git push`.
-3. In the repository, go to **Settings ▸ Pages ▸ Build and deployment**, set Source to *Deploy from a branch* and Branch to `main` / `(root)`, then **Save**.
-4. After a minute your site is live at `https://<your-username>.github.io/attendance/`.
-5. Back in Supabase, open **Authentication ▸ URL Configuration** and set **Site URL** to that address. Password-reset emails need this.
-
-The admin page is `https://<your-username>.github.io/attendance/admin.html`. Bookmark it.
+**Integrity**
+- One record per student per class.
+- The ID must be on your uploaded list.
+- 5 wrong PINs lock that ID for the class.
+- One device per student per class (optional).
+- The PIN is made on the server, and the current and previous PIN are accepted.
 
 ---
 
 ## Day-to-day use
 
-### Start of semester
-1. **admin.html ▸ Intakes:** add e.g. `Fall 2026-27`. **Courses:** add e.g. `CSC 3215 — Web Technologies`.
-2. **Add section:** pick the intake and course, then enter the section (`R`), class code and *classes per term*. A **Mid Term** and a **Final Term** are created with Class-01 … Class-NN.
-3. **Students tab ▸ Upload student list:** choose the university *Valid Student List* (.xlsx) or any Excel/CSV with a Student ID column and a Name column. See `templates/student_list_template.csv`.
-   - Re-uploading merges the lists.
-   - Tick the box in the dialog to also remove students who dropped.
-4. Copy the **student link** (or show its **QR code**) and post it once in the class group or on the portal. It stays the same all semester.
+1. **Start of semester:**
+   1. Click **New section**.
+   2. Open **Students ▸ Upload list**.
+   3. Share the **Student link** (copy it, or show the QR code) once with the class.
+2. **Each class:** click **Start Class-NN** at the top of the section. That opens the PIN screen. Press **Start attendance**.
+   - Students open the link and type their ID and the PIN.
+   - Press **End** when done.
+3. **Corrections:** use the **Attendance sheet** tab, and click a cell.
+   - **Late** and **Excused** both count as attended.
+   - **Absent** removes the record.
+4. **At-risk students:** check the **Overview** tab to see who is below your minimum.
 
-### Every class
-1. **Classes & PIN** tab ▸ click **Start PIN ▸** for today's class. A classroom screen opens.
-2. Choose how long attendance stays open (default 10 min) and click **Start**. The PIN changes every 15 seconds, and the screen shows a live *present / enrolled* count and the latest check-ins.
-3. Students open the link, type their ID and the current PIN, and see a ✔ with their name.
-   - A PIN from the previous 15-second window is still accepted, so slow typers aren't punished.
-4. Click **End attendance** when you're done, or let it close on its own. **+5 min** extends it.
+### Export and merge into the Portfolio
+Click **Export Excel**. Each term sheet has `Student ID | Student Name | Class-01 … Class-NN | Present | Classes Held | Attendance %`.
 
-Only one class per section can be open at a time. Opening another class closes the previous one.
+- **Cell values:** `1` = attended, `0` = absent, blank = class not held yet.
+- **Row order:** rows follow your uploaded list, which matches the Portfolio master.
 
-### Fixing records
-In the **Attendance sheet** tab, click any cell to mark a student present or absent by hand, e.g. for a student whose phone died. Your marks show as a blue ✔, PIN check-ins as a green ✔.
+To merge, copy the Class columns of a term sheet. Then, in the master's **Mid Overall** or **Final Overall** sheet, use **Paste Special ▸ Values**. If the two files might be in different orders, use a lookup instead, e.g. `=INDEX(Export!C:C, MATCH($B5, Export!$A:$A, 0))`.
 
-### Export to Excel and merge into the Portfolio
-Click **⬇ Export Excel**. The file `Attendance_<course>_<intake>_Sec-<section>_<date>.xlsx` contains:
-
-| Sheet | Contents |
-|---|---|
-| **Info** | Course, section, intake, export time |
-| **Mid Term**, **Final Term** | Student ID, Student Name, **Class-01 … Class-NN** (1 = present, 0 = absent, blank = not held yet), Present, Classes Held, Attendance % |
-| **Check-in Log** | Every record with time, PIN/Manual, and device |
-
-Rows follow the order of the uploaded student list, which is the same order as the Portfolio master. To merge:
-
-1. Open the export and the Portfolio master.
-2. Select the Class columns of a term sheet (e.g. `C2:H47`), then copy.
-3. In the master's **Mid Overall** (or **Final Overall**) sheet, click the first attendance cell of the first student and use **Paste Special ▸ Values**.
-4. If the two lists might be in different orders, use a lookup instead, e.g. `=INDEX(Export!C:C, MATCH($B5, Export!$A:$A, 0))`.
+## Notes
+- **Privacy:** each faculty account sees only its own data, enforced by Row Level Security. Students can only call the two check-in functions.
+- **Theme:** the light/dark choice is remembered per device. It starts from the device's own setting.
+- **Free-tier pausing:** Supabase free projects pause after about a week with no activity. Click *Restore* in the dashboard if that happens.
+- **Time zone:** all times are shown in Bangladesh time (Asia/Dhaka).
 
 ---
 
-## Security notes
-- **Data separation:** each faculty account sees only its own intakes, sections, students and attendance (Row Level Security on every table).
-- **What students can do:** call `get_section_public` (course name, and whether a class is open) and `submit_attendance`. They cannot read the student list, other students' records or the PIN.
-- **How PINs are made:** the server derives them from a secret that is regenerated each time a class is opened, so a PIN from an old class never works again.
-- **Proxy attendance:**
-  - The PIN only appears in the room, and it changes every 15 seconds.
-  - The *one device per student per class* option (Settings tab, on by default) stops one phone from checking in a friend.
-  - A determined student could still message the PIN to a friend inside those 15 seconds. The Check-in Log shows times and device codes if you need to investigate.
-- **If the link leaks:** **Settings ▸ Generate a new link** if the section link was shared outside the class.
+## License and copyright
 
-## Limits & tips
-- **Free-tier pausing:** Supabase free projects pause after about a week with no activity. Open the dashboard and click *Restore* if that happens. Regular class use keeps it awake.
-- **Time zone:** times display in `Asia/Dhaka` (change `TIME_ZONE` in `config.js`).
-- **Clocks:** the classroom screen gets the PIN from the server every second, so the laptop's clock doesn't matter.
+**© 2026 Wahidul Alam Riyad. All rights reserved.**
 
-## Files
-```
-index.html        landing page (redirects ?s=… links to the student page)
-admin.html        faculty app            → assets/admin.js
-pin.html          classroom PIN screen   → assets/pin.js
-attend.html       student check-in       → assets/attend.js
-config.js         your Supabase URL + anon key
-assets/common.js  shared helpers, assets/app.css styles
-supabase/schema.sql  database, security rules and functions
-templates/student_list_template.csv
-```
+This repository is published only so that the app can be hosted. Making the source code visible does **not** grant any rights to it. Without the author's prior written permission, you may not:
+
+- copy, fork, clone or download this code to reuse it;
+- modify it or build other software from it;
+- host or deploy your own copy, or connect it to another database;
+- sell, license, share or distribute it, in whole or in part;
+- remove or change this notice.
+
+Students and faculty may use the hosted site only for the course attendance it was set up for.
+
+To request permission, contact the author, Wahidul Alam Riyad.
+See the full terms in [LICENSE](LICENSE).
