@@ -1,6 +1,9 @@
 // Shared helpers for all pages
 (function () {
   const cfg = window.APP_CONFIG || {};
+  // Accept a pasted URL with /rest/v1/ or a trailing slash: keep only https://<project>.supabase.co
+  if (cfg.SUPABASE_URL) cfg.SUPABASE_URL = String(cfg.SUPABASE_URL).trim().replace(/\/(rest|auth)\/v1\/?.*$/i, "").replace(/\/+$/, "");
+  if (cfg.SUPABASE_ANON_KEY) cfg.SUPABASE_ANON_KEY = String(cfg.SUPABASE_ANON_KEY).trim();
   const configured = cfg.SUPABASE_URL && !cfg.SUPABASE_URL.includes("YOUR-PROJECT") && cfg.SUPABASE_ANON_KEY && !cfg.SUPABASE_ANON_KEY.includes("YOUR-");
 
   const App = {
