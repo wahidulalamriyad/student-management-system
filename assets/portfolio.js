@@ -27,59 +27,88 @@
     return rows;
   }
 
+  // Weight a display row counts for in its term (best/avg count one candidate; parts of one quiz form one candidate)
+  const candKey = (a) => String(a.name).split(" · ")[0];
+  function candidates(items) { const m = new Map(); items.forEach((a) => { const k = candKey(a); if (!m.has(k)) m.set(k, []); m.get(k).push(a); }); return [...m.values()]; }
+  function rowWeight(row) {
+    if (row.rule === "best" || row.rule === "avg") return Math.max(0, ...candidates(row.items).map((c) => c.reduce((n, a) => n + (+a.weight || 0), 0)));
+    return row.items.reduce((n, a) => n + (+a.weight || 0), 0);
+  }
+
   /**
-   * Compute one student's results.
+   * Compute one student's results — mirrors the Portfolio Excel files:
+   *  · Attendance mark = classes attended ÷ classes in the term × full mark
+   *  · "Best One" groups count the best quiz (a quiz may have parts, e.g. "Quiz 1 · …")
+   *  · "Add Up & Round Up" groups = ROUNDUP(sum ÷ full × weight) (project rubric criteria)
+   *  · Grand Total = Σ term total × term weight; grade from the scale (no rounding unless chosen)
    * ctx: { terms, assessments, scale, round, coTarget, cos, specialGrade }
-   * score(aid) -> number|null, att(termId) -> {held, attended}
+   * score(aid) -> number|null, att(termId) -> {held, attended, planned}
    */
   function student(ctx, score, att) {
     const terms = [...ctx.terms].sort((a, b) => (a.sort || 0) - (b.sort || 0));
     const wSum = terms.reduce((n, t) => n + (num(t.weight) || 0), 0);
     const tw = (t) => (wSum > 0 ? (num(t.weight) || 0) / wSum : 1 / (terms.length || 1));
     const out = { terms: [], overall: 0, complete: true, coList: [] };
-    const coAgg = {};
+    const coAgg = {}, addCo = (co, got, max) => { if (!co) return; const c = (coAgg[co] ||= { got: 0, max: 0 }); c.got += got; c.max += max; };
+    let gW = 0, gC = 0;
     terms.forEach((t) => {
       const items = ctx.assessments.filter((a) => a.term_id === t.id).sort((a, b) => (a.sort || 0) - (b.sort || 0));
-      const A = att(t.id) || { held: 0, attended: 0 };
-      let total = 0, possible = 0, missing = 0, pending = 0, gW = 0, gC = 0;
+      const A = { held: 0, attended: 0, planned: 0, ...(att(t.id) || {}) }; const planned = A.planned || A.held;
+      let total = 0, possible = 0, missing = 0, pending = 0, tgW = 0, tgC = 0;
       const rows = termRows(items).map((row) => {
         const kids = row.items.map((a) => {
           const hidden = a.visible === false;
           let sc = null;
-          if (a.kind === "attendance") sc = A.held ? (A.attended / A.held) * a.max_marks : null;
+          if (a.kind === "attendance") sc = planned ? (A.attended / planned) * a.max_marks : null;
           else sc = hidden ? null : num(score(a.id));
-          const ratio = sc == null ? null : Math.min(1, sc / a.max_marks);
-          if (a.co && a.kind !== "attendance" && sc != null) { const c = (coAgg[a.co] ||= { got: 0, max: 0 }); c.got += Math.min(sc, a.max_marks); c.max += +a.max_marks; }
+          if (sc != null) sc = Math.min(sc, +a.max_marks);
+          const ratio = sc == null ? null : sc / a.max_marks;
           return { a, hidden, score: sc, ratio, contrib: ratio == null ? 0 : ratio * a.weight, missing: !hidden && sc == null && a.kind !== "attendance", pending: hidden || (a.kind === "attendance" && !A.held) };
         });
-        let contrib, weight, max, sc, ratio;
+        const isAtt = kids[0].a.kind === "attendance";
+        let contrib = 0, weight = rowWeight(row), max, sc = null, ratio = null, graded = 0;
         if (row.rule === "best" || row.rule === "avg") {
-          const have = kids.filter((k) => k.ratio != null);
-          weight = Math.max(...kids.map((k) => +k.a.weight)); max = Math.max(...kids.map((k) => +k.a.max_marks));
-          ratio = have.length ? (row.rule === "best" ? Math.max(...have.map((k) => k.ratio)) : have.reduce((n, k) => n + k.ratio, 0) / have.length) : null;
-          contrib = ratio == null ? 0 : ratio * weight; sc = ratio == null ? null : ratio * max;
-          if (row.rule === "best") { const b = have.find((k) => k.ratio === ratio); kids.forEach((k) => (k.best = k === b)); }
+          const cands = candidates(row.items).map((c) => { const ks = kids.filter((k) => c.includes(k.a)), have = ks.filter((k) => k.score != null);
+            const mx = ks.reduce((n, k) => n + +k.a.max_marks, 0), w = ks.reduce((n, k) => n + +k.a.weight, 0);
+            return { ks, mx, w, ratio: have.length ? have.reduce((n, k) => n + k.score, 0) / mx : null }; });
+          const have = cands.filter((c) => c.ratio != null);
+          max = Math.max(...cands.map((c) => c.mx));
+          if (have.length) {
+            const pick = row.rule === "best" ? have.reduce((b, c) => (c.ratio > b.ratio ? c : b)) : null;
+            ratio = pick ? pick.ratio : have.reduce((n, c) => n + c.ratio, 0) / have.length;
+            contrib = ratio * weight; sc = ratio * max; graded = weight;
+            if (pick) pick.ks.forEach((k) => (k.best = true));
+          }
+          kids.forEach((k) => k.a.co && k.score != null && addCo(k.a.co, k.score, +k.a.max_marks));
         } else {
-          weight = kids.reduce((n, k) => n + +k.a.weight, 0); max = kids.reduce((n, k) => n + +k.a.max_marks, 0);
-          contrib = kids.reduce((n, k) => n + k.contrib, 0);
+          max = kids.reduce((n, k) => n + +k.a.max_marks, 0);
           const scored = kids.filter((k) => k.score != null);
-          sc = scored.length ? scored.reduce((n, k) => n + k.score, 0) : null; ratio = sc == null ? null : sc / max;
+          if (row.rule === "sum_up") {
+            if (scored.length) { sc = scored.reduce((n, k) => n + k.score, 0); contrib = Math.ceil(r2((sc / max) * weight) - 1e-9); ratio = weight ? contrib / weight : 0; graded = weight; }
+            const co = kids.find((k) => k.a.co)?.a.co; if (co && scored.length) addCo(co, contrib, weight);
+          } else {
+            contrib = kids.reduce((n, k) => n + k.contrib, 0);
+            if (scored.length) { sc = scored.reduce((n, k) => n + k.score, 0); ratio = sc / max; }
+            graded = isAtt ? (planned ? weight * (A.held / planned) : 0) : scored.reduce((n, k) => n + +k.a.weight, 0);
+            kids.forEach((k) => k.a.co && k.a.kind !== "attendance" && k.score != null && addCo(k.a.co, k.score, +k.a.max_marks));
+          }
         }
-        const rowPending = kids.every((k) => k.pending), rowMissing = row.rule === "sum" ? kids.some((k) => k.missing) : kids.every((k) => k.missing || k.pending);
+        const rowPending = kids.every((k) => k.pending), rowMissing = row.rule === "sum" || row.rule === "sum_up" ? kids.some((k) => k.missing) : kids.every((k) => k.missing || k.pending);
         const co = [...new Set(kids.map((k) => k.a.co).filter(Boolean))].join(", ");
         total += contrib; possible += rowPending ? 0 : weight; if (rowMissing) missing++; if (rowPending) pending++;
-        if (!rowPending && ratio != null) { gW += weight; gC += contrib; }
-        return { ...row, kids, contrib, weight, max, score: sc, ratio, co, pending: rowPending, missing: rowMissing, kind: kids[0].a.kind };
+        if (!rowPending) { tgW += graded; tgC += contrib; }
+        return { ...row, kids, contrib, weight, max, score: row.rule === "sum_up" && sc != null ? contrib : sc, scoreMax: row.rule === "sum_up" ? weight : max, ratio, co, pending: rowPending, missing: rowMissing, kind: kids[0].a.kind };
       });
       const g = gradeFor(total, ctx.scale, ctx.round);
-      out.terms.push({ term: t, weightShare: tw(t), rows, total: r2(total), possible, missing, pending, grade: g, att: A,
+      const tComplete = !missing && !pending && !(planned && A.held < planned);
+      out.terms.push({ term: t, weightShare: tw(t), rows, total: r2(total), possible, missing, pending, grade: tgW > 0.01 ? g : null, graded: tgW > 0.01, complete: tComplete, att: A,
         attPct: A.held ? Math.round((A.attended / A.held) * 100) : null, empty: items.length === 0 });
-      out.overall += total * tw(t); out._gW = (out._gW || 0) + gW * tw(t); out._gC = (out._gC || 0) + gC * tw(t);
-      if (missing || pending) out.complete = false;
+      out.overall += total * tw(t); gW += tgW * tw(t); gC += tgC * tw(t);
+      if (missing || pending || (planned && A.held < planned)) out.complete = false;
     });
     out.overall = r2(out.overall);
-    out.coverage = r2(out._gW || 0);                                   // % of the course marked so far
-    out.standing = out._gW ? r2(((out._gC || 0) / out._gW) * 100) : null; // score on what has been marked
+    out.coverage = r2(gW);
+    out.standing = gW > 0.01 ? r2((gC / gW) * 100) : null;
     const g = gradeFor(out.overall, ctx.scale, ctx.round);
     out.grade = ctx.specialGrade ? { grade: ctx.specialGrade, point: null, special: true } : g;
     out.standingGrade = out.standing == null ? null : gradeFor(out.standing, ctx.scale, ctx.round);
@@ -93,64 +122,75 @@
     return out;
   }
 
-  // ------------------------------------------------------------------ presets
+  // ------------------------------------------------------------------ presets (from the Course Outlines & Portfolio files)
+  const RULES = { sum: "Add Up", sum_up: "Add Up & Round Up", best: "Best One", avg: "Average" };
   const P = (term, name, max, weight, extra = {}) => ({ term, name, max_marks: max, weight, ...extra });
   const att = (term, label = "Attendance & Performance") => P(term, label, 10, 10, { kind: "attendance" });
   const crit = (term, grp, names, max, weight, co) => names.map((n) => P(term, n, max, weight, { grp, co }));
+  // Web Tech project rubric: 3 components (0–5) → criterion = ROUNDUP(sum ÷ 15 × 10)
+  const comp3 = (term, grp, names, co) => names.map((n, i) => P(term, n, 5, i === 2 ? 3.34 : 3.33, { grp, co, rule: "sum_up" }));
+  const quiz = (term, names, max, grp = "Quiz (Best of 2)") => names.map((n) => P(term, n, max, max, { grp, rule: "best" }));
   const PRESETS = {
     webtech: {
-      label: "Web Technologies (CSC 3215)", termWeights: [40, 60],
+      label: "Web Technologies (CSC 3215)", termWeights: [40, 60], credit: 3,
+      note: "Attendance & Performance 10% · Project Prototype 20% · 2 Quizzes (best 1) 20% · Term Exam 50%",
       cos: [{ code: "CO1", statement: "Analyze professional engineering solutions in societal and environmental contexts", po: "PO-c-1", level: "C4" },
         { code: "CO2", statement: "Classify the flow of process for sustainable digital solution", po: "PO-c-1", level: "C4" },
         { code: "CO3", statement: "Develop multi-tier web application for targeted society", po: "PO-c-2", level: "C4" },
         { code: "CO4", statement: "Develop a multi-tier-based web application as group member/leader in the project", po: "PO-k-3", level: "P4" }],
       plan: [
-        att(0), P(0, "Quiz 1", 20, 20, { grp: "Quiz (Best of 2)", rule: "best" }), P(0, "Quiz 2", 20, 20, { grp: "Quiz (Best of 2)", rule: "best" }),
-        ...crit(0, "Project Prototype 1", ["Criterion 1", "Criterion 2"], 10, 10, "CO3").map((x) => ({ ...x, by_group: true })),
-        ...crit(0, "Mid Term Exam", ["Analytical Question · Criterion 1", "Analytical Question · Criterion 2"], 10, 10, "CO1"),
+        att(0), ...quiz(0, ["Quiz 1", "Quiz 2"], 20),
+        ...comp3(0, "Prototype 1 · Front-End Design & Code Structure", ["Pages & Forms (HTML)", "UI Design (CSS)", "Code Structure (HTML/CSS/JS Separation)"], "CO3"),
+        ...comp3(0, "Prototype 1 · Feature Implementation & Explanation", ["JS Form Validation", "DOM Manipulation", "Viva (Code Explanation)"], "CO3"),
+        ...crit(0, "Mid Term Exam", ["Analytical · Web Architecture & Technologies", "Analytical · Societal & Environmental Impact"], 10, 10, "CO1"),
         P(0, "Short Question", 10, 10, { grp: "Mid Term Exam" }), P(0, "Code Writing", 20, 20, { grp: "Mid Term Exam" }),
-        att(1), P(1, "Quiz 3", 20, 20, { grp: "Quiz (Best of 2)", rule: "best" }), P(1, "Quiz 4", 20, 20, { grp: "Quiz (Best of 2)", rule: "best" }),
-        ...crit(1, "Project Prototype 2", ["Criterion 1", "Criterion 2"], 10, 10, "CO4").map((x) => ({ ...x, by_group: true })),
-        ...crit(1, "Final Term Exam", ["Analytical Question · Criterion 1", "Analytical Question · Criterion 2"], 10, 10, "CO2"),
+        att(1), ...quiz(1, ["Quiz 1", "Quiz 2"], 20),
+        ...comp3(1, "Prototype 2 · Back-End Development & Teamwork", ["PHP Validation & MVC", "MySQL & Auth (Session/Cookie)", "Git Contribution & Deadlines"], "CO4"),
+        ...comp3(1, "Prototype 2 · Technical Knowledge & Presentation", ["AJAX/JSON & API", "Basic Web Security", "Viva"], "CO4"),
+        ...crit(1, "Final Term Exam", ["Analytical · Classification of Server-Side Components", "Analytical · Server-Side Process Flow"], 10, 10, "CO2"),
         P(1, "Short Question", 10, 10, { grp: "Final Term Exam" }), P(1, "Code Writing", 20, 20, { grp: "Final Term Exam" })],
     },
     toc: {
-      label: "Theory of Computation (CSC 3113)", termWeights: [40, 60],
+      label: "Theory of Computation (CSC 3113)", termWeights: [40, 60], credit: 3,
+      note: "Attendance 10% · 2 Quizzes (best 1) 30% · Written Exam (marked /100) 60%",
       cos: [{ code: "CO1", statement: "Demonstrate different computational model and mathematical notations", po: "PO-a-2", level: "C3" },
         { code: "CO2", statement: "Use original example of different computational model and mathematical notations", po: "PO-a-2", level: "C3" },
         { code: "CO3", statement: "Determine a solution for a complex problem using the principles of existing computational models", po: "PO-c-3", level: "C5" },
         { code: "CO4", statement: "Explain the principles of existing computational models and use it to find a new solution", po: "PO-l-2", level: "A4" }],
       plan: [
         att(0, "Attendance"),
-        ...crit(0, "Quiz 1", ["DFA Design · Design", "DFA Design · Design Conventions", "DFA Design · Result Analysis"], 5, 5, "CO3"), P(0, "Other Questions", 15, 15, { grp: "Quiz 1" }),
-        ...crit(0, "Mid Term Exam (out of 100 → 60)", ["Regular Expression · Definition", "Regular Expression · Logical Argument", "Regular Expression · Relevant Example"], 5, 3, "CO2"),
-        ...crit(0, "Mid Term Exam (out of 100 → 60)", ["NFA to DFA · Modification", "NFA to DFA · Conventions Followed", "NFA to DFA · Result Analysis"], 5, 3, "CO4"),
-        P(0, "Other Questions", 70, 42, { grp: "Mid Term Exam (out of 100 → 60)" }),
-        att(1, "Attendance"), P(1, "Quiz 2", 30, 30, { grp: "Quiz (Best of 2)", rule: "best" }), P(1, "Quiz 3", 30, 30, { grp: "Quiz (Best of 2)", rule: "best" }),
-        ...crit(1, "Final Term Exam (out of 100 → 60)", ["PDA Formal Definition · Definition", "PDA Formal Definition · Logical Argument", "PDA Formal Definition · Relevant Example"], 5, 3, "CO1"),
-        P(1, "Other Questions", 85, 51, { grp: "Final Term Exam (out of 100 → 60)" })],
+        ...["Quiz 1 · DFA Design · Design", "Quiz 1 · DFA Design · Design Conventions", "Quiz 1 · DFA Design · Result Analysis"].map((n) => P(0, n, 5, 5, { grp: "Quiz (Best of 2)", rule: "best", co: "CO3" })),
+        P(0, "Quiz 1 · Other Questions", 15, 15, { grp: "Quiz (Best of 2)", rule: "best" }), P(0, "Quiz 2", 30, 30, { grp: "Quiz (Best of 2)", rule: "best" }),
+        ...crit(0, "Mid Term Exam (Marked /100 → 60%)", ["Regular Expression · Definition", "Regular Expression · Logical Argument", "Regular Expression · Relevant Example"], 5, 3, "CO2"),
+        ...crit(0, "Mid Term Exam (Marked /100 → 60%)", ["NFA to DFA (Part B) · Modification", "NFA to DFA (Part B) · Conventions Followed", "NFA to DFA (Part B) · Result Analysis"], 5, 3, "CO4"),
+        P(0, "Other Questions", 70, 42, { grp: "Mid Term Exam (Marked /100 → 60%)" }),
+        att(1, "Attendance"), ...quiz(1, ["Quiz 1", "Quiz 2"], 30),
+        ...crit(1, "Final Term Exam (Marked /100 → 60%)", ["PDA Formal Definition · Definition", "PDA Formal Definition · Logical Argument", "PDA Formal Definition · Relevant Example"], 5, 3, "CO1"),
+        P(1, "Other Questions", 85, 51, { grp: "Final Term Exam (Marked /100 → 60%)" })],
     },
     dslab: {
-      label: "Data Structure Lab (CSC 2107)", termWeights: [40, 60],
+      label: "Data Structure Lab (CSC 2107)", termWeights: [40, 60], credit: 1,
+      note: "Attendance & Performance 10% · Lab Tasks 30% · Assignment & Viva (/20) 40% · Lab Exam (/20) 20%",
       cos: [{ code: "CO1", statement: "Apply concepts of basic data structures to solve simple arithmetic problems", po: "PO-a-4", level: "C3" },
         { code: "CO2", statement: "Solve real-life problems using advanced concepts of data structure", po: "PO-a-4", level: "C3" },
         { code: "CO3", statement: "Determine approaches required to solve complex problems based on specific requirements", po: "PO-e-1", level: "C3" },
         { code: "CO4", statement: "Use determined approaches in solving complex real-life problems with specific requirements", po: "PO-e-1", level: "C3" }],
       plan: [
-        att(0), P(0, "Lab Task", 30, 30),
+        att(0), P(0, "Lab Tasks", 30, 30),
         ...crit(0, "Assignment & Viva", ["Knowledge and Proper Use of Data Structure", "Solution"], 10, 20, "CO1"),
-        ...crit(0, "Lab Exam", ["Problem Analysis and Choice of Data Structure", "Solution"], 10, 10, "CO2"),
-        att(1), P(1, "Lab Task", 30, 30),
+        ...crit(0, "Lab Exam and OBE", ["Problem Analysis and Choice of Data Structure", "Solution"], 10, 10, "CO2"),
+        att(1), P(1, "Lab Tasks", 30, 30),
         ...crit(1, "Assignment & Viva", ["Determination of Approach and Data Structure", "Solution"], 10, 20, "CO3"),
         ...crit(1, "Lab Exam", ["Problem Analysis and Use of Data Structure", "Solution"], 10, 10, "CO4")],
     },
     theory: {
       label: "Standard Theory Course", termWeights: [40, 60], cos: [],
-      plan: [0, 1].flatMap((t) => [att(t, "Attendance"), P(t, `Quiz ${t * 2 + 1}`, 20, 20, { grp: "Quiz (Best of 2)", rule: "best" }), P(t, `Quiz ${t * 2 + 2}`, 20, 20, { grp: "Quiz (Best of 2)", rule: "best" }),
-        P(t, "Assignment", 20, 20), P(t, "Term Exam", 100, 50)]),
+      note: "Attendance 10% · 2 Quizzes (best 1) 20% · Assignment 20% · Term Exam (/100) 50%",
+      plan: [0, 1].flatMap((t) => [att(t, "Attendance"), ...quiz(t, ["Quiz 1", "Quiz 2"], 20), P(t, "Assignment", 20, 20), P(t, "Term Exam", 100, 50)]),
     },
     lab: {
       label: "Standard Lab Course", termWeights: [40, 60], cos: [],
+      note: "Attendance & Performance 10% · Lab Tasks 30% · Lab Report 20% · Lab Exam 40%",
       plan: [0, 1].flatMap((t) => [att(t), P(t, "Lab Tasks", 30, 30), P(t, "Lab Report", 20, 20), P(t, "Lab Exam", 40, 40)]),
     },
   };
@@ -165,7 +205,7 @@
    */
   function render(data, opts = {}) {
     const sec = data.section, course = data.course, minAtt = sec.min_attendance_pct ?? 80;
-    const attBy = {}; data.classes.forEach((c) => { const a = (attBy[c.term_id] ||= { held: 0, attended: 0 }); if (c.held) { a.held++; if (c.status) a.attended++; } });
+    const attBy = {}; data.classes.forEach((c) => { const a = (attBy[c.term_id] ||= { held: 0, attended: 0, planned: 0 }); a.planned++; if (c.held) { a.held++; if (c.status) a.attended++; } });
     const R = student({ terms: data.terms, assessments: data.assessments, scale: sec.grade_scale, round: sec.round_total, coTarget: course.co_target, cos: course.cos, specialGrade: data.student.special_grade },
       (aid) => data.marks[aid], (tid) => attBy[tid]);
     const fin = R.complete || !!R.grade?.special, G = (fin ? R.grade : R.standingGrade) || {}, gClass = !G.grade ? "" : G.special ? "violet" : G.grade === "F" ? "red" : /^A/.test(G.grade) ? "green" : /^B/.test(G.grade) ? "blue" : "amber";
@@ -186,19 +226,19 @@
         const isAtt = row.kind === "attendance", avg = row.kids.length === 1 && !isAtt ? num(data.averages?.[row.kids[0].a.id]) : null;
         const avgSum = row.rule === "sum" && row.kids.length > 1 && row.kids.every((k) => data.averages?.[k.a.id] != null) ? row.kids.reduce((n, k) => n + +data.averages[k.a.id], 0) : null;
         const sAvg = avg ?? avgSum;
-        const scoreTxt = row.pending ? `<span class="faint">${isAtt ? "No classes yet" : "Not released"}</span>` : row.score == null ? `<span class="faint">—</span>` : `<b>${fmt(row.score, 2)}</b><span class="faint"> / ${fmt(row.max, 2)}</span>`;
+        const scoreTxt = row.pending ? `<span class="faint">${isAtt ? "No classes yet" : "Not released"}</span>` : row.score == null ? `<span class="faint">—</span>` : `<b>${fmt(row.score, 2)}</b><span class="faint"> / ${fmt(row.scoreMax, 2)}</span>`;
         const sub = row.group && row.kids.length > 1 ? `<div class="pf-sub">${row.kids.map((k) => `<div class="${k.best ? "best" : ""}"><span>${esc(k.a.name)}${k.a.co ? ` <span class="co-tag">${esc(k.a.co)}</span>` : ""}${k.best ? ` <span class="badge green" style="padding:0 7px">Counted</span>` : ""}</span>
             <span>${k.hidden ? `<span class="faint">Not released</span>` : k.score == null ? `<span class="faint">—</span>` : `${fmt(k.score, 2)}<span class="faint"> / ${fmt(k.a.max_marks, 2)}</span>`}</span></div>`).join("")}</div>` : "";
         return `<div class="pf-row ${row.group && row.kids.length > 1 ? "has-sub" : ""}">
-          <div class="pf-name"><b>${esc(row.label)}</b>${row.co ? ` <span class="co-tag">${esc(row.co)}</span>` : ""}${row.rule === "best" ? ` <span class="faint xs">best counted</span>` : ""}${isAtt && T.att.held ? `<div class="xs faint">${T.att.attended} of ${T.att.held} class${T.att.held === 1 ? "" : "es"}</div>` : ""}</div>
+          <div class="pf-name"><b>${esc(row.label)}</b>${row.co ? ` <span class="co-tag">${esc(row.co)}</span>` : ""}${row.rule === "best" ? ` <span class="faint xs">· best counted</span>` : row.rule === "sum_up" ? ` <span class="faint xs">· rounded up</span>` : ""}${isAtt && T.att.planned ? `<div class="xs faint">${T.att.attended} attended · ${T.att.held} of ${T.att.planned} classes held</div>` : ""}</div>
           <div class="pf-score">${scoreTxt}</div>
-          <div class="pf-contrib"><div class="progress ${row.ratio != null && row.ratio < 0.5 ? "bad" : row.ratio != null && row.ratio < 0.7 ? "warn" : ""}"><span style="width:${(row.ratio || 0) * 100}%"></span></div>
+          ${(() => { const bar = isAtt ? (T.att.held ? T.att.attended / T.att.held : null) : row.ratio; return `<div class="pf-contrib"><div class="progress ${bar != null && bar < (isAtt ? minAtt / 100 : 0.5) ? "bad" : bar != null && bar < 0.7 ? "warn" : ""}"><span style="width:${(bar || 0) * 100}%"></span></div>`; })()}
             <span><b>${row.pending ? "—" : fmt(row.contrib, 2)}</b><span class="faint"> / ${fmt(row.weight, 2)}</span></span></div>
           <div class="pf-avg">${sAvg != null ? `${fmt(sAvg, 1)}<span class="faint"> avg</span>` : ""}</div>${sub}</div>`;
       }).join("");
       const tg = T.grade || {};
       return `<div class="card pf-term"><div class="card-head"><div><h2>${esc(T.term.name)}</h2><div class="sub">${Math.round(T.weightShare * 100)}% of the course total${T.attPct != null ? ` · Attendance ${T.attPct}%` : ""}</div></div>
-          <div class="pf-tt"><span class="faint small">Term Total</span><b>${T.empty ? "—" : fmt(T.total)}</b><span class="faint">/ 100</span>${T.empty ? "" : `<span class="grade-pill sm">${esc(tg.grade || "")}</span>`}</div></div>
+          <div class="pf-tt"><span class="faint small">Term Total${T.complete || T.empty || !T.graded ? "" : " So Far"}</span><b>${T.empty || !T.graded ? "—" : fmt(T.total)}</b><span class="faint">/ 100</span>${T.empty || !T.graded ? "" : `<span class="grade-pill sm">${esc(tg.grade || "")}</span>`}</div></div>
         ${T.empty ? `<p class="muted">No assessments set for this term yet.</p>` : `<div class="pf-table"><div class="pf-row pf-hdr"><div>Assessment</div><div>Marks</div><div>Weighted</div><div>Section</div></div>${rows}</div>`}</div>`;
     }).join("");
 
@@ -221,12 +261,12 @@
 
     const scale = [...(sec.grade_scale || AIUB_SCALE)].sort((a, b) => b.min - a.min);
     const gs = `<div class="card"><div class="card-head"><div><h2>Grading Scale</h2><div class="sub">${sec.round_total ? "Totals are rounded to the nearest whole number before grading" : "Totals are graded as they are"}</div></div></div>
-      <div class="gs-grid">${scale.map((g, i) => `<div class="gs ${G.grade === g.grade ? "on" : ""}"><b>${esc(g.grade)}</b><span>${g.min}${i === 0 ? "–100" : `–${scale[i - 1].min - 1}`}</span><span class="faint">${(+g.point).toFixed(2)}</span></div>`).join("")}</div></div>`;
+      <div class="gs-grid">${scale.map((g, i) => `<div class="gs ${G.grade === g.grade ? "on" : ""}"><b>${esc(g.grade)}</b><span>${i === 0 ? `${g.min}–100` : g.min === 0 ? `< ${scale[i - 1].min}` : `${g.min} – <${scale[i - 1].min}`}</span><span class="faint">${(+g.point).toFixed(2)}</span></div>`).join("")}</div></div>`;
 
     return `<div class="pf">${head}
       ${anyMarks ? `<div class="stack">${terms}</div>` : `<div class="card"><div class="empty"><div class="ic">${icon("book")}</div><h3>No marks yet</h3><p>${opts.faculty ? "Set up the assessment plan in the Marks tab." : "Your instructor has not added any assessments yet."}</p></div></div>`}
       <div class="grid cols-2" style="align-items:start">${cos ? `<div class="stack">${cos}</div>` : ""}<div class="stack">${attn}${grp}${gs}</div></div></div>`;
   }
 
-  window.Grade = { AIUB_SCALE, PRESETS, student, gradeFor, termRows, render, fmt, num, r2 };
+  window.Grade = { AIUB_SCALE, PRESETS, student, gradeFor, termRows, rowWeight, render, fmt, num, r2, RULES };
 })();

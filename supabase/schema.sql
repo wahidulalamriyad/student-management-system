@@ -1,6 +1,6 @@
 -- © 2026 Wahidul Alam Riyad. All rights reserved. Proprietary — see LICENSE.
 -- =============================================================================
---  Attendance Management System — Supabase schema
+--  Classfolio — Supabase schema (attendance, marks, portfolios)
 --  Run this once in Supabase: Dashboard ▸ SQL Editor ▸ New query ▸ paste ▸ Run.
 --  Safe to re-run: it creates what is missing and replaces the functions.
 -- =============================================================================
@@ -599,3 +599,167 @@ revoke all on function public.portal_checkin(text, text, text)    from public;
 grant execute on function public.portal_lookup(text)              to anon, authenticated;
 grant execute on function public.portal_portfolio(text, text)     to anon, authenticated;
 grant execute on function public.portal_checkin(text, text, text) to anon, authenticated;
+
+-- =============================================================================
+--  PART 3 — Classfolio: exact-grading defaults, rounded rubric groups,
+--  portal rate limiting and optional portfolio access codes. Safe to re-run.
+-- =============================================================================
+alter table public.sections alter column round_total set default false;   -- AIUB: 85 – < 90 = A (no rounding)
+alter table public.assessments drop constraint if exists assessments_rule_check;
+alter table public.assessments add constraint assessments_rule_check check (rule in ('sum', 'best', 'avg', 'sum_up'));
+
+create or replace function public._new_code() returns text language sql volatile as $$
+  select string_agg(substr('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 1 + (get_byte(b, i) % 32), 1), '')
+    from (select extensions.gen_random_bytes(6) as b) x, generate_series(0, 5) i
+$$;
+alter table public.sections add column if not exists portfolio_code_required boolean not null default false;
+alter table public.students add column if not exists access_code text not null default public._new_code();
+
+-- private helper tables (no policies; functions only)
+create table if not exists public.portal_seen (
+  ip text not null, student_id text not null, at timestamptz not null default now(),
+  primary key (ip, student_id)
+);
+create table if not exists public.portal_fail (
+  section_id uuid not null references public.sections(id) on delete cascade, student_id text not null,
+  attempts int not null default 0, last_at timestamptz not null default now(),
+  primary key (section_id, student_id)
+);
+alter table public.portal_seen enable row level security;
+alter table public.portal_fail enable row level security;
+revoke all on public.portal_seen, public.portal_fail from anon, authenticated;
+
+-- Slows down anyone trying many Student IDs: at most 300 different IDs per connection per hour.
+create or replace function public._portal_guard(p_id text) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare v_ip text; n int;
+begin
+  v_ip := coalesce(nullif(split_part(coalesce(current_setting('request.headers', true)::json ->> 'x-forwarded-for', ''), ',', 1), ''),
+                   current_setting('request.headers', true)::json ->> 'x-real-ip', 'unknown');
+  if random() < 0.02 then delete from portal_seen where at < now() - interval '1 hour'; end if;
+  if exists (select 1 from portal_seen where ip = v_ip and student_id = p_id and at > now() - interval '1 hour') then return true; end if;
+  select count(*) into n from portal_seen where ip = v_ip and at > now() - interval '1 hour';
+  if n >= 300 then return false; end if;
+  insert into portal_seen (ip, student_id, at) values (v_ip, p_id, now()) on conflict (ip, student_id) do update set at = now();
+  return true;
+end $$;
+revoke all on function public._portal_guard(text) from public, anon, authenticated;
+
+-- portal_lookup with rate limit (same result as before)
+create or replace function public.portal_lookup(p_student_id text)
+returns json language plpgsql security definer set search_path = public as $$
+declare v_id text := _norm_id(p_student_id); r json;
+begin
+  if length(v_id) = 0 or length(v_id) > 30 then
+    return json_build_object('ok', false, 'code', 'bad_id', 'message', 'Enter your Student ID.');
+  end if;
+  if not _portal_guard(v_id) then
+    return json_build_object('ok', false, 'code', 'rate', 'message', 'Too many look-ups from this connection. Please try again in an hour.');
+  end if;
+  select coalesce(json_agg(row_to_json(q) order by q.created_at desc), '[]'::json) into r from (
+    select se.public_token as token, co.code as course_code, co.title as course_title, co.credit_hours,
+           se.name as section, se.class_code, i.name as intake, se.instructor, se.portfolio_published as published,
+           se.portfolio_code_required as needs_code, se.created_at,
+           (select json_build_object('term', t.name, 'number', cl.number, 'title', cl.title, 'expires_at', cl.expires_at,
+                                     'status', (select a.status from attendance a where a.class_id = cl.id and a.student_id = v_id))
+              from classes cl join terms t on t.id = cl.term_id
+             where t.section_id = se.id and cl.is_open and cl.expires_at > now()
+             order by cl.expires_at desc limit 1) as active,
+           _student_summary(se.id, v_id) as summary
+      from students st join sections se on se.id = st.section_id
+      join courses co on co.id = se.course_id join intakes i on i.id = se.intake_id
+     where st.student_id = v_id) q;
+  if r::text = '[]' then
+    return json_build_object('ok', false, 'code', 'not_found', 'message', 'No courses were found for this Student ID. Check the ID and try again.');
+  end if;
+  return json_build_object('ok', true, 'student_id', v_id, 'sections', r);
+end $$;
+
+-- portfolio now takes an optional access code; the old 2-argument version is removed
+drop function if exists public.portal_portfolio(text, text);
+create or replace function public.portal_portfolio(p_token text, p_student_id text, p_code text default null)
+returns json language plpgsql security definer set search_path = public as $$
+declare v_id text := _norm_id(p_student_id); s record; st record; v_fail int;
+begin
+  if not _portal_guard(v_id) then
+    return json_build_object('ok', false, 'code', 'rate', 'message', 'Too many look-ups from this connection. Please try again in an hour.');
+  end if;
+  select se.id, se.name, se.class_code, se.instructor, se.grade_scale, se.round_total, se.min_attendance_pct, se.portfolio_published,
+         se.portfolio_code_required, co.code, co.title, co.credit_hours, co.cos, co.co_target, i.name as intake into s
+    from sections se join courses co on co.id = se.course_id join intakes i on i.id = se.intake_id
+   where se.public_token = p_token;
+  if not found then return json_build_object('ok', false, 'code', 'invalid', 'message', 'This course could not be found.'); end if;
+  select special_grade, access_code into st from students where section_id = s.id and student_id = v_id;
+  if not found then return json_build_object('ok', false, 'code', 'not_enrolled', 'message', 'This Student ID is not on the list for this course.'); end if;
+  if not s.portfolio_published then
+    return json_build_object('ok', false, 'code', 'unpublished', 'message', 'Your instructor has not published the portfolio for this course yet.');
+  end if;
+  if s.portfolio_code_required then
+    select attempts into v_fail from portal_fail where section_id = s.id and student_id = v_id and last_at > now() - interval '1 hour';
+    if coalesce(v_fail, 0) >= 10 then
+      return json_build_object('ok', false, 'code', 'locked', 'message', 'Too many wrong access codes. Try again in an hour or ask your instructor.');
+    end if;
+    if p_code is null or upper(regexp_replace(p_code, '\s', '', 'g')) <> st.access_code then
+      if p_code is not null then
+        insert into portal_fail (section_id, student_id, attempts, last_at) values (s.id, v_id, 1, now())
+          on conflict (section_id, student_id) do update
+            set attempts = case when portal_fail.last_at < now() - interval '1 hour' then 1 else portal_fail.attempts + 1 end, last_at = now();
+      end if;
+      return json_build_object('ok', false, 'code', 'need_code',
+        'message', case when p_code is null then 'Enter the access code your instructor gave you.' else 'That access code is not correct.' end);
+    end if;
+    delete from portal_fail where section_id = s.id and student_id = v_id;
+  end if;
+  return json_build_object('ok', true,
+    'course', json_build_object('code', s.code, 'title', s.title, 'credit_hours', s.credit_hours, 'cos', s.cos, 'co_target', s.co_target),
+    'section', json_build_object('name', s.name, 'class_code', s.class_code, 'intake', s.intake, 'instructor', s.instructor,
+                                 'grade_scale', s.grade_scale, 'round_total', s.round_total, 'min_attendance_pct', s.min_attendance_pct),
+    'student', json_build_object('student_id', v_id, 'special_grade', st.special_grade),
+    'terms', (select coalesce(json_agg(json_build_object('id', t.id, 'name', t.name, 'weight', t.weight, 'sort', t.sort) order by t.sort, t.name), '[]'::json)
+                from terms t where t.section_id = s.id),
+    'assessments', (select coalesce(json_agg(json_build_object('id', a.id, 'term_id', a.term_id, 'name', a.name, 'grp', a.grp, 'rule', a.rule,
+                      'kind', a.kind, 'max_marks', a.max_marks, 'weight', a.weight, 'co', a.co, 'visible', a.visible, 'sort', a.sort) order by a.sort), '[]'::json)
+                from assessments a where a.section_id = s.id),
+    'marks', (select coalesce(json_object_agg(m.assessment_id, m.score), '{}'::json)
+                from marks m join assessments a on a.id = m.assessment_id
+               where a.section_id = s.id and a.visible and m.student_id = v_id and m.score is not null),
+    'averages', (select coalesce(json_object_agg(x.aid, x.av), '{}'::json) from (
+                   select a.id as aid, round(avg(m.score), 2) as av
+                     from assessments a join marks m on m.assessment_id = a.id and m.score is not null
+                     join students s2 on s2.section_id = a.section_id and s2.student_id = m.student_id
+                    where a.section_id = s.id and a.visible group by a.id) x),
+    'classes', (select coalesce(json_agg(json_build_object('term_id', cl.term_id, 'number', cl.number, 'date', cl.class_date,
+                   'held', (cl.opened_at is not null or exists (select 1 from attendance a where a.class_id = cl.id)),
+                   'status', (select a.status from attendance a where a.class_id = cl.id and a.student_id = v_id)) order by t.sort, cl.number), '[]'::json)
+                from classes cl join terms t on t.id = cl.term_id where t.section_id = s.id),
+    'group', (select json_build_object('name', g.name, 'title', g.title,
+                     'members', (select json_agg(gm2.student_id order by gm2.student_id) from group_members gm2 where gm2.group_id = g.id))
+                from group_members gm join groups g on g.id = gm.group_id where gm.section_id = s.id and gm.student_id = v_id limit 1)
+  );
+end $$;
+revoke all on function public.portal_portfolio(text, text, text) from public;
+grant execute on function public.portal_portfolio(text, text, text) to anon, authenticated;
+revoke all on function public.portal_lookup(text) from public;
+grant execute on function public.portal_lookup(text) to anon, authenticated;
+
+-- faculty: new access codes for a whole section
+create or replace function public.reset_access_codes(p_section uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  update students set access_code = _new_code() where section_id = p_section and owner = auth.uid();
+  get diagnostics n = row_count; return n;
+end $$;
+revoke all on function public.reset_access_codes(uuid) from public, anon;
+grant execute on function public.reset_access_codes(uuid) to authenticated;
+
+-- one-time fixes (run once, then remembered)
+create table if not exists public.classfolio_migrations (name text primary key, at timestamptz not null default now());
+alter table public.classfolio_migrations enable row level security;
+revoke all on public.classfolio_migrations from anon, authenticated;
+do $$ begin
+  if not exists (select 1 from public.classfolio_migrations where name = 'round_total_off') then
+    update public.sections set round_total = false;          -- match the Portfolio Excel files: grade the exact total
+    insert into public.classfolio_migrations (name) values ('round_total_off');
+  end if;
+end $$;

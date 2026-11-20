@@ -1,9 +1,9 @@
-# Student Management System — attendance, marks and portfolios
+# Classfolio — attendance, marks and student portfolios
 
 > **© 2026 Wahidul Alam Riyad. All rights reserved.**
 > This software is proprietary. You may not copy, modify, redistribute, host, sell or use it, in whole or in part, without the author's prior written permission. See [LICENSE](LICENSE).
 
-A static web app for managing all your intakes, courses and sections, with light and dark mode. It brings together everything from the Portfolio Excel files and the Attendance Management System.
+**Classfolio** is a static web app for managing all your intakes, courses and sections, with light and dark mode. It brings together everything from the Portfolio Excel files and the Attendance Management System.
 
 - **Hosting:** the site runs on **GitHub Pages**.
 - **Database:** **Supabase**.
@@ -41,11 +41,28 @@ A static web app for managing all your intakes, courses and sections, with light
   - Attendance items are filled in automatically.
   - Group-marked items and a Hidden-from-students switch.
   - Term weights: Mid 40% / Final 60%.
-  - Presets matching your portfolios:
-    - **Web Technologies (CSC 3215)**: Quiz best of 2, Project Prototype, Analytical / Short / Code exam parts.
-    - **Theory of Computation (CSC 3113)**: exams marked out of 100 and converted to 60, with rubric criteria for the CO questions.
-    - **Data Structure Lab (CSC 2107)**: Lab Task, Assignment & Viva, Lab Exam.
+  - Group rules:
+    - **Add Up** for exam parts and rubric criteria.
+    - **Add Up & Round Up** for project rubric components: ROUNDUP(sum ÷ 15 × 10), as in the Project Evaluation sheets.
+    - **Best One** for quizzes. The parts of one quiz count together, e.g. Quiz 1 with its CO3 question.
+    - **Average.**
+  - Presets taken from the course outlines and Portfolio files:
+    - **Web Technologies (CSC 3215), 3 credits:**
+      - Attendance & Performance 10%, 2 Quizzes (best 1) 20%, Project Prototype 20%, Term Exam 50%.
+      - The Term Exam is Analytical (CO1 / CO2, 2 rubric criteria × 10) + Short 10 + Code Writing 20.
+      - Prototype 1 is CO3 and Prototype 2 is CO4. Each has 2 criteria, and each criterion is built from 3 components marked 0–5.
+    - **Theory of Computation (CSC 3113), 3 credits:**
+      - Attendance 10%, 2 Quizzes (best 1) 30%, Written Exam marked /100 → 60%.
+      - CO3 is the Mid Quiz 1 DFA question, CO2 and CO4 are on the Mid Term Exam, CO1 is on the Final Term Exam. Each CO question has 3 criteria × 5.
+    - **Data Structure Lab (CSC 2107), 1 credit:**
+      - Attendance & Performance 10%, Lab Tasks 30%, Assignment & Viva (/20 → 40%), Lab Exam (/20 → 20%).
+      - CO1–CO4 each have 2 criteria × 10.
     - A standard theory course and a standard lab course.
+  - **Grading rules for every course, as in the outlines:**
+    - Mid 40% + Final 60%.
+    - Attendance mark = classes attended ÷ classes in the term × 10.
+    - AIUB grade scale, graded on the exact total (85 – < 90 = A).
+    - A CO is attained at 60%.
 - **Groups tab:**
   - Project groups, up to 10 groups (11 when there are more than 40 students).
   - A student can only be in one group, and the same groups are used for every term.
@@ -79,7 +96,10 @@ A static web app for managing all your intakes, courses and sections, with light
   - Course outcome attainment and attendance per class.
   - Their project group and the grading scale.
   - A print option.
-- **Privacy:** student names are never shown in the portal, and hidden items stay hidden.
+- **Privacy:**
+  - Student names are never shown in the portal, and hidden items stay hidden.
+  - **Optional personal access codes:** turn on *Require a Personal Access Code* in Settings so a student needs their own 6-character code, as well as their ID, to open a portfolio. Download the code list from Settings.
+  - "Change ID" clears the saved codes on a shared device.
 
 **Integrity**
 - One attendance record per student per class.
@@ -88,6 +108,10 @@ A static web app for managing all your intakes, courses and sections, with light
 - One device per student per class (optional).
 - The PIN is made on the server.
 - Each faculty account sees only its own data.
+- **Security:**
+  - The portal allows at most 300 different Student IDs per connection per hour, and 10 wrong access codes lock a portfolio for an hour.
+  - Every page has a Content Security Policy.
+  - The Supabase and QR libraries are bundled at fixed versions in `assets/vendor/`.
 
 ---
 

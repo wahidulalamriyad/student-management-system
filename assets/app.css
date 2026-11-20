@@ -721,3 +721,38 @@ td, th { line-height: 1.4; }
 .res-table td:nth-child(2) { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .grp-card .member .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .grp-marks > span { line-height: 1.35; }
+
+/* ===================== Classfolio polish: alignment & rhythm ===================== */
+h1, h2, h3, .title, .sec-card .title { text-wrap: balance; }
+p, .hint, .sub, .msg, .small { text-wrap: pretty; }
+.page-head { align-items: center; }
+.page-head > div:first-child { min-width: 0; }
+.page-head .actions { align-items: center; }
+.card-head { align-items: center; }
+.card-head > div:first-child { min-width: 0; }
+.stats { align-items: stretch; }
+.stat { min-height: 88px; }
+.grid > .card, .grid > .stack > .card { height: auto; }
+.grid.cols-2 > .card, .grid.cols-3 > .card { display: flex; flex-direction: column; }
+.sec-card, .course-card, .grp-card, .co-card { height: 100%; }
+.sec-card .foot { margin-top: auto; }
+.course-card .foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.grp-card .grp-marks { margin-top: auto; }
+.grp-card .members { flex: 0 0 auto; }
+.co-card { display: flex; flex-direction: column; }
+.co-card > p { flex: 1; }
+.sec-grid, .course-grid, .grp-grid { align-items: stretch; }
+.list li > svg.i:first-child { color: var(--muted); }
+.list li b { font-variant-numeric: tabular-nums; }
+.tabs { gap: 2px; }
+.linkbox { min-height: 46px; }
+.eyebrow .badge { margin-right: 2px; }
+.pf-row > div { min-width: 0; }
+.pf-name b { display: inline; }
+.pf-kpi { justify-content: space-between; min-height: 112px; }
+.stat > div:last-child { min-width: 0; }
+.modal .dlg-body > p:last-child { margin-bottom: 4px; }
+.table-wrap td:first-child, .table-wrap th:first-child { padding-left: 20px; }
+.table-wrap td:last-child, .table-wrap th:last-child { padding-right: 20px; }
+.btn-group > .btn { flex: 0 0 auto; }
+@media (max-width: 900px) { .page-head { align-items: flex-start; } }

@@ -1,5 +1,5 @@
 /*! © 2026 Wahidul Alam Riyad. All rights reserved. Proprietary — unauthorized copying, use or redistribution is prohibited. See LICENSE. */
-// Shared helpers for all pages
+// Classfolio — shared helpers for all pages
 (function () {
   const cfg = window.APP_CONFIG || {};
   // Accept a pasted URL with /rest/v1/ or a trailing slash: keep only https://<project>.supabase.co

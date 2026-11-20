@@ -29,7 +29,7 @@
   function topbar() {
     const name = user?.email || "";
     return `<header class="topbar">
-      <a class="brand" href="#/"><div class="logo">${icon("logo")}</div><div><div class="t1">Student Management</div><div class="t2">${esc(cfg.INSTITUTION || "")}</div></div></a>
+      <a class="brand" href="#/"><div class="logo">${icon("logo")}</div><div><div class="t1">Classfolio</div><div class="t2">${esc(cfg.INSTITUTION || "")}</div></div></a>
       <div class="spacer"></div>
       <a class="btn ghost sm" href="#/setup" title="Intakes & Courses">${icon("layers")}<span class="hide-sm">Intakes & Courses</span></a>
       ${App.theme.button()}
@@ -79,7 +79,7 @@
   function renderLogin(msg = "", email = "") {
     root.innerHTML = `<div class="corner">${App.theme.button()}</div><div class="center-wrap" style="min-height:100vh"><div class="login">
       <div class="card"><div class="logo-lg">${icon("logo")}</div>
-      <h1>Welcome Back</h1><p class="muted" style="margin:6px 0 26px">Sign in to manage students, marks and attendance${cfg.INSTITUTION ? ` · ${esc(cfg.INSTITUTION)}` : ""}</p>
+      <h1>Welcome to Classfolio</h1><p class="muted" style="margin:6px 0 26px">Sign in to manage your sections, marks and attendance${cfg.INSTITUTION ? ` · ${esc(cfg.INSTITUTION)}` : ""}</p>
       <form id="lf"><label for="em">Email</label><input id="em" type="email" autocomplete="username" value="${esc(email)}" required />
       <div class="field-gap"></div><label for="pw">Password</label>
       <div class="search"><input id="pw" type="password" autocomplete="current-password" required style="padding-left:13px;padding-right:44px" />
@@ -322,11 +322,10 @@
     const tabs = [["overview", "Overview", "chart"], ["classes", "Classes", "calendar", classes.length], ["students", "Students", "users", students.length], ["sheet", "Attendance", "grid"],
       ["marks", "Marks", "book", S.assess.length || null], ["groups", "Groups", "layers", S.groups.length || null], ["results", "Results", "target"], ["log", "Check-In Log", "list", S.att.length], ["settings", "Settings", "settings"]];
     page(`<div class="crumbs"><a href="#/">${icon("back")} All Sections</a></div>
-      <div class="page-head"><div><div class="eyebrow"><span class="badge blue">${esc(sec.course.code)}</span>${sec.class_code ? `<span>Class Code ${esc(sec.class_code)}</span><span>·</span>` : ""}<span>${esc(sec.intake.name)}</span></div>
+      <div class="page-head"><div><div class="eyebrow"><span class="badge blue">${esc(sec.course.code)}</span>${sec.class_code ? `<span>Class Code ${esc(sec.class_code)}</span><span>·</span>` : ""}<span>${esc(sec.intake.name)}</span><span>·</span><span class="badge ${sec.portfolio_published ? "green" : ""}" title="Student portfolio">${icon(sec.portfolio_published ? "eye" : "eyeoff")} Portfolio ${sec.portfolio_published ? "Published" : "Not Published"}</span></div>
         <h1>${esc(sec.course.title)} <span class="muted" style="font-weight:600">· Section ${esc(sec.name)}</span></h1></div>
         <div class="actions"><button class="btn secondary" id="share">${icon("qr")} Student Portal</button>
           <button class="btn secondary" id="xls">${icon("download")} Export Excel</button>
-          <span class="badge ${sec.portfolio_published ? "green" : ""}" style="align-self:center" title="Student portfolio">${icon(sec.portfolio_published ? "eye" : "eyeoff")} ${sec.portfolio_published ? "Published" : "Not Published"}</span>
           ${nextC ? `<a class="btn ${open ? "green" : ""}" href="pin.html?class=${nextC.id}" target="_blank" rel="noopener">${icon(open ? "external" : "play")} ${open ? "Open PIN Screen" : `Start ${App.classLabel(nextC.number)}`}</a>` : ""}</div></div>
       ${open ? `<div class="live" style="margin-bottom:20px"><span class="live-dot"></span><div class="grow"><b>Attendance Is Open</b> for ${esc(openTerm.name)} · ${App.classLabel(open.number)} — ${Object.keys(recs(open.id)).length} of ${students.length} checked in</div>
         <button class="btn sm secondary" id="refresh">${icon("refresh")} Refresh</button></div>` : ""}
@@ -390,9 +389,10 @@
           : `<div class="empty" style="padding:24px"><div class="ic" style="background:var(--success-soft);color:var(--success)">${icon("check")}</div><p style="margin:0">No students are at risk${X.held.length ? "" : " yet"}.</p></div>`}
         </div></div>
       <div class="stack">
-        ${S.assess.length ? (() => { const R = allResults(), tot = Object.values(R).map((r) => r.overall), av = tot.length ? tot.reduce((n, x) => n + x, 0) / tot.length : null, f = Object.values(R).filter((r) => r.grade?.grade === "F").length;
+        ${S.assess.length ? (() => { const R = Object.values(allResults()), key = (r) => (r.complete || r.grade?.special ? r.overall : r.standing), gr = (r) => (r.complete || r.grade?.special ? r.grade : r.standingGrade);
+          const vals = R.map(key).filter((x) => x != null), av = vals.length ? vals.reduce((n, x) => n + x, 0) / vals.length : null, f = R.filter((r) => gr(r)?.grade === "F").length, open_ = R.some((r) => !r.complete);
           return `<div class="card"><div class="card-head" style="margin-bottom:12px"><h2>Marks & Grades</h2><button class="btn sm soft" id="tores">${icon("target")} Results</button></div>
-            <ul class="list"><li>${icon("chart")}<span class="grow">Section average</span><b>${fmt(av)} / 100</b></li><li>${icon("alert")}<span class="grow">Currently failing (F)</span><b class="${f ? "pct-bad" : ""}">${f}</b></li>
+            <ul class="list"><li>${icon("chart")}<span class="grow">Section average${open_ ? " (so far)" : ""}</span><b>${av == null ? "—" : fmt(av) + "%"}</b></li><li>${icon("alert")}<span class="grow">${open_ ? "Standing at F" : "Failing (F)"}</span><b class="${f ? "pct-bad" : ""}">${f}</b></li>
             <li>${icon(S.sec.portfolio_published ? "eye" : "eyeoff")}<span class="grow">Portfolio</span><b>${S.sec.portfolio_published ? "Published" : "Not Published"}</b></li></ul></div>`; })() : `<div class="card"><h2 style="margin-bottom:8px">Marks & Grades</h2><p class="small muted">No assessment plan yet.</p><button class="btn sm" id="tomarks2">${icon("book")} Set Up Marks</button></div>`}
         <div class="card"><h2 style="margin-bottom:18px">Attendance Distribution</h2><div class="bands">${bands.map(([l, n, c]) => `<div class="band"><span class="muted">${l}</span>
           <div class="progress ${c === "green" ? "" : c}"><span style="width:${students.length ? (n / students.length) * 100 : 0}%"></span></div><b class="num">${n}</b></div>`).join("")}</div></div>
@@ -580,7 +580,8 @@
   async function editStudent(s) {
     const d = await App.dialog({ title: s ? "Edit Student" : "Add a Student", ic: s ? "edit" : "plus", okText: s ? "Save" : "Add Student", html: true,
       body: `<label>Student ID</label><input id="o_id" placeholder="${esc(cfg.STUDENT_ID_EXAMPLE || "")}" maxlength="30" value="${esc(s?.student_id || "")}" ${s ? "disabled" : ""} />
-        <div class="field-gap"></div><label>Full Name</label><input id="o_nm" maxlength="120" value="${esc(s?.name || "")}" />`,
+        <div class="field-gap"></div><label>Full Name</label><input id="o_nm" maxlength="120" value="${esc(s?.name || "")}" />
+        ${s && s.access_code ? `<div class="field-gap"></div><label>Portfolio Access Code</label><div class="linkbox"><code style="font-size:16px;letter-spacing:.18em">${esc(s.access_code)}</code><button type="button" class="btn sm secondary" onclick="App.copy('${esc(s.access_code)}','Code copied')">${icon("copy")}</button></div><p class="hint">Only needed when the section requires access codes.</p>` : ""}`,
       validate: (m) => { const id = normId(m.querySelector("#o_id").value); if (!id) return "Enter the Student ID."; if (!s && cfg.STUDENT_ID_PATTERN && !new RegExp(cfg.STUDENT_ID_PATTERN).test(id)) return `ID should look like ${cfg.STUDENT_ID_EXAMPLE}.`; if (!s && S.students.some((x) => x.student_id === id)) return "This ID is already on the list."; } });
     if (!d) return;
     try {
@@ -780,7 +781,7 @@
   // ------------------------------------------------------------------ Excel export
   function exportExcel() {
     const { sec, terms, students } = S, X = stats(), wb = XLSX.utils.book_new();
-    const info = [[S.assess.length ? "Student portfolio export" : "Attendance export"], [], ["Course", `${sec.course.code} — ${sec.course.title}`], ["Section", sec.name], ["Class Code", sec.class_code || ""],
+    const info = [["Classfolio export"], [], ["Course", `${sec.course.code} — ${sec.course.title}`], ["Section", sec.name], ["Class Code", sec.class_code || ""],
       ["Intake", sec.intake.name], ["Exported", App.fmtDate(new Date())], ["Students", students.length], ["Classes Held", X.held.length], ["Minimum Attendance", sec.min_attendance_pct / 100], [],
       ["How to Read"], ["Attendance sheets: 1 = attended (present, late or excused), 0 = absent, blank = class not held yet."], ["Results and Marks sheets: totals out of 100 per term, Grand Total uses the term weights, grades use the section's grade scale."],
       ["Detail sheet: P = present, L = late, E = excused, A = absent."],
@@ -847,7 +848,7 @@
     const wsL = XLSX.utils.aoa_to_sheet(log); wsL["!cols"] = [{ wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 13 }, { wch: 32 }, { wch: 20 }, { wch: 9 }, { wch: 8 }, { wch: 10 }];
     XLSX.utils.book_append_sheet(wb, wsL, "Check-in Log");
 
-    XLSX.writeFile(wb, `${S.assess.length ? "Portfolio" : "Attendance"}_${safe(sec.course.code)}_${safe(sec.intake.name)}_Sec-${safe(sec.name)}_${new Date().toLocaleDateString("en-CA")}.xlsx`);
+    XLSX.writeFile(wb, `Classfolio_${safe(sec.course.code)}_${safe(sec.intake.name)}_Sec-${safe(sec.name)}_${new Date().toLocaleDateString("en-CA")}.xlsx`);
     App.toast("Excel file downloaded");
   }
   function fmtPct(ws, col, n) { const c = XLSX.utils.encode_col(col); for (let r = 2; r <= n + 1; r++) { const cell = ws[`${c}${r}`]; if (cell && cell.t === "n") cell.z = "0%"; } }
@@ -866,7 +867,7 @@
     S.members = await App.fetchAll(() => sb.from("group_members").select("*").eq("section_id", S.sec.id).order("id"));
   }
   const markOf = (aid, sid) => { const v = S.marks[aid]?.[sid]; return v == null ? null : v; };
-  function attByTerm(sid) { const m = {}; S.terms.forEach((t) => { let h = 0, a = 0; t.classes.forEach((c) => { if (!isHeld(c)) return; h++; if (recs(c.id)[sid]) a++; }); m[t.id] = { held: h, attended: a }; }); return m; }
+  function attByTerm(sid) { const m = {}; S.terms.forEach((t) => { let h = 0, a = 0; t.classes.forEach((c) => { if (!isHeld(c)) return; h++; if (recs(c.id)[sid]) a++; }); m[t.id] = { held: h, attended: a, planned: t.classes.length }; }); return m; }
   const ctxFor = (s) => ({ terms: S.terms, assessments: S.assess, scale: S.sec.grade_scale, round: S.sec.round_total, coTarget: S.sec.course.co_target ?? 60, cos: S.sec.course.cos || [], specialGrade: s?.special_grade || null });
   function resultOf(s) { const A = attByTerm(s.student_id); return Grade.student(ctxFor(s), (aid) => markOf(aid, s.student_id), (tid) => A[tid]); }
   function allResults() { const o = {}; S.students.forEach((s) => (o[s.student_id] = resultOf(s))); return o; }
@@ -926,7 +927,7 @@
     const T = S.terms.find((t) => t.id === ui.mterm);
     const items = S.assess.filter((a) => a.term_id === T.id).sort(bySort), rows = Grade.termRows(items);
     const cols = rows.flatMap((r) => r.items);
-    const R = allResults(), wsum = rows.reduce((n, r) => n + (r.rule === "sum" ? r.items.reduce((m, a) => m + a.weight, 0) : Math.max(...r.items.map((a) => a.weight))), 0);
+    const R = allResults(), wsum = rows.reduce((n, r) => n + Grade.rowWeight(r), 0);
     const head = (a) => `${esc(a.name)}<small>/ ${fmt(a.max_marks, 2)} · ${fmt(a.weight, 2)}%${a.co ? ` · ${esc(a.co)}` : ""}${a.by_group ? " · Group" : ""}${a.visible === false ? " · Hidden" : ""}</small>`;
     const filled = cols.filter((a) => a.kind !== "attendance").reduce((n, a) => n + S.students.filter((s) => markOf(a.id, s.student_id) != null).length, 0);
     const need = cols.filter((a) => a.kind !== "attendance").length * S.students.length;
@@ -939,10 +940,10 @@
           <button class="icon-btn bordered" id="mmenu" title="Import / Export">${icon("dots")}</button></div></div>
       <div style="padding:0 24px 16px" class="row center-y small muted">
         <span class="weight-meter ${Math.abs(wsum - 100) < 0.01 ? "ok" : "bad"}">${icon(Math.abs(wsum - 100) < 0.01 ? "check" : "alert")} Term weights add up to ${fmt(wsum, 2)}%</span>
-        <span>·</span><span>${filled} of ${need} marks entered</span><span>·</span><span>Type a mark and it saves by itself. <span class="kbd">Enter</span> moves down. You can paste a block of marks from Excel.</span></div>
+        <span>·</span><span id="mcount">${filled} of ${need} marks entered</span><span>·</span><span>Type a mark and it saves by itself. <span class="kbd">Enter</span> moves down. You can paste a block of marks from Excel.</span></div>
       ${S.students.length ? `<div class="table-wrap keep" style="max-height:640px;border-radius:0;border-left:0;border-right:0;border-bottom:0"><table class="mgrid"><thead>
         <tr><th class="sticky" rowspan="2">Student ID</th><th class="name" rowspan="2" style="text-align:left">Name</th>
-          ${rows.map((r) => (r.group ? `<th class="grp" colspan="${r.items.length}">${esc(r.label)}${r.rule !== "sum" ? ` <span class="faint">· ${r.rule === "best" ? "Best Counted" : "Average"}</span>` : ""}</th>` : `<th class="it" rowspan="2">${head(r.items[0])}</th>`)).join("")}
+          ${rows.map((r) => (r.group ? `<th class="grp" colspan="${r.items.length}">${esc(r.label)}${r.rule !== "sum" ? ` <span class="faint">· ${r.rule === "best" ? "Best Counted" : r.rule === "sum_up" ? "Rounded Up" : "Average"}</span>` : ""}</th>` : `<th class="it" rowspan="2">${head(r.items[0])}</th>`)).join("")}
           <th rowspan="2" class="num">Total<small style="display:block;font-weight:500;color:var(--faint)">/ 100</small></th><th rowspan="2" style="padding-right:20px">Grade</th></tr>
         <tr>${rows.filter((r) => r.group).flatMap((r) => r.items).map((a) => `<th class="it">${head(a)}</th>`).join("")}</tr></thead>
         <tbody id="mtb">${S.students.map((s) => { const tr = R[s.student_id].terms.find((x) => x.term.id === T.id); const A = attByTerm(s.student_id)[T.id];
@@ -957,7 +958,8 @@
     $("#plan").onclick = planEditor;
     $("#mmenu").onclick = (e) => popover(e.currentTarget, `<button data-v="tpl">${icon("download")} Download Marks Sheet (${esc(T.name)})</button><button data-v="up">${icon("upload")} Upload Marks Sheet</button>`, (v) => (v === "tpl" ? marksTemplate(T) : pickMarksFile(T)));
     const tb = $("#mtb"); if (!tb) return;
-    const recalc = (tr) => { const s = S.students.find((x) => x.student_id === tr.dataset.s), r = resultOf(s).terms.find((x) => x.term.id === T.id);
+    const recount = () => { const el = $("#mcount"); if (!el) return; const n = cols.filter((a) => a.kind !== "attendance").reduce((k, a) => k + S.students.filter((x) => markOf(a.id, x.student_id) != null).length, 0); el.textContent = `${n} of ${need} marks entered`; };
+    const recalc = (tr) => { recount(); const s = S.students.find((x) => x.student_id === tr.dataset.s), r = resultOf(s).terms.find((x) => x.term.id === T.id);
       tr.querySelector("[data-tot]").textContent = fmt(r.total); tr.querySelector("[data-grd]").innerHTML = `<span class="grade-pill sm ${gradeTone(r.grade?.grade)}">${esc(r.grade?.grade || "—")}</span>`; };
     const apply = (inp) => {
       const raw = inp.value.trim(), max = +inp.dataset.max, tr = inp.closest("tr");
@@ -1006,7 +1008,7 @@
   }
   function planSummary(p) {
     const rows = Grade.termRows(p.plan.filter((x) => x.term === 0).map((x, i) => ({ ...x, sort: i })));
-    return rows.map((r) => `${esc(r.label.replace(/ \(.*\)$/, ""))} ${fmt(r.rule === "sum" ? r.items.reduce((n, a) => n + a.weight, 0) : r.items[0].weight)}%`).join(" · ") + ` · Mid ${p.termWeights[0]}% / Final ${p.termWeights[1]}%`;
+    return `${esc(p.note || "")} · Mid ${p.termWeights[0]}% / Final ${p.termWeights[1]}%`;
   }
   async function ensureTwoTerms() {
     const t = [...S.terms].sort(bySort);
@@ -1039,7 +1041,7 @@
       validate: () => { const bad = local.find((a) => !a.name.trim() || !(+a.max_marks > 0) || isNaN(+a.weight)); return bad ? `Check “${bad.name || "(no name)"}”: it needs a name, a full mark above 0 and a weight.` : null; } });
     const m = $$(".modal-bg").pop(); m.querySelector(".modal").style.maxWidth = "1180px";
     const box = m.querySelector("#pe");
-    const termSum = (tid) => Grade.termRows(local.filter((a) => a.term_id === tid)).reduce((n, r) => n + (r.rule === "sum" ? r.items.reduce((k, a) => k + (+a.weight || 0), 0) : Math.max(...r.items.map((a) => +a.weight || 0))), 0);
+    const termSum = (tid) => Grade.termRows(local.filter((a) => a.term_id === tid)).reduce((n, r) => n + Grade.rowWeight(r), 0);
     const draw = () => {
       const rows = local.filter((a) => a.term_id === cur), groups = [...new Set(local.map((a) => a.grp).filter(Boolean))];
       const ws = termSum(cur), twSum = terms.reduce((n, t) => n + (+tw[t.id] || 0), 0);
@@ -1055,7 +1057,7 @@
             <td class="nowrap"><button class="icon-btn" data-up="${i}" title="Move up" style="width:28px;height:28px;transform:rotate(90deg)">${icon("back")}</button></td>
             <td><input data-f="grp" list="grps" value="${esc(a.grp || "")}" placeholder="—" style="min-width:140px" /></td>
             <td><input data-f="name" value="${esc(a.name)}" style="min-width:230px" /></td>
-            <td><select data-f="rule" style="min-width:128px" ${a.grp ? "" : "disabled"}><option value="sum" ${a.rule === "sum" ? "selected" : ""}>Add Up</option><option value="best" ${a.rule === "best" ? "selected" : ""}>Best One</option><option value="avg" ${a.rule === "avg" ? "selected" : ""}>Average</option></select></td>
+            <td><select data-f="rule" style="min-width:128px" ${a.grp ? "" : "disabled"}>${Object.entries(Grade.RULES).map(([k, l]) => `<option value="${k}" ${a.rule === k ? "selected" : ""}>${l}</option>`).join("")}</select></td>
             <td><select data-f="kind" style="min-width:138px"><option value="marks" ${a.kind !== "attendance" ? "selected" : ""}>Marks</option><option value="attendance" ${a.kind === "attendance" ? "selected" : ""}>Attendance</option></select></td>
             <td><input data-f="max_marks" type="number" min="0.5" step="0.5" value="${a.max_marks}" style="width:80px" /></td>
             <td><input data-f="weight" type="number" min="0" max="100" step="0.5" value="${a.weight}" style="width:80px" /></td>
@@ -1067,7 +1069,8 @@
           <div class="btn-group"><button class="btn sm secondary" id="padd">${icon("plus")} Add Assessment</button><button class="btn sm secondary" id="patt">${icon("calendar")} Add Attendance Marks</button></div>
           <span class="weight-meter ${Math.abs(ws - 100) < 0.01 ? "ok" : "bad"}">${icon(Math.abs(ws - 100) < 0.01 ? "check" : "alert")} This term adds up to ${fmt(ws, 2)}%${Math.abs(ws - 100) < 0.01 ? "" : " — should be 100%"}</span></div>
         <p class="hint" style="margin-top:12px"><b>Weight</b> is how many % of the term total an item is worth. A 100-mark exam that counts 60% has Full Mark 100, Weight 60.
-          Items with the same <b>Group</b> are shown together: <b>Add Up</b> adds them (exam parts, rubric criteria), <b>Best One</b> counts only the best (quizzes).
+          Items with the same <b>Group</b> are shown together: <b>Add Up</b> adds them (exam parts, rubric criteria), <b>Add Up &amp; Round Up</b> rounds the group up to whole marks (project rubric components),
+          <b>Best One</b> counts only the best quiz — parts of one quiz are named “Quiz 1 · …”.
           <b>Attendance</b> items are filled in automatically from the attendance record.</p>`;
       box.querySelectorAll("#pt button").forEach((b) => (b.onclick = () => { cur = b.dataset.t; draw(); }));
       box.querySelectorAll("[data-tw]").forEach((inp) => (inp.oninput = () => { tw[inp.dataset.tw] = inp.value; }));
@@ -1303,6 +1306,9 @@
         <div style="height:16px"></div><button class="btn" id="saveco">${icon("check")} Save Course Outcomes</button></div>`;
     return `<div class="card"><div class="card-head"><div><h2>Student Portfolio</h2><div class="sub">What students see in the Student Portal</div></div></div>
         <label class="switch"><input type="checkbox" id="st_pub" ${sec.portfolio_published ? "checked" : ""} /><span>Show Portfolio to Students<span class="d">Marks, grade, course outcomes and attendance. Students open the portal and type their Student ID.</span></span></label>
+        <div class="field-gap"></div>
+        <label class="switch"><input type="checkbox" id="st_code" ${sec.portfolio_code_required ? "checked" : ""} /><span>Require a Personal Access Code<span class="d">Recommended. Each student also needs their own 6-character code to open the portfolio, so nobody can view another student's marks by typing their ID. Attendance check-in is not affected.</span></span></label>
+        <div class="btn-group" style="margin-top:12px;padding-left:56px"><button class="btn sm secondary" id="dlcodes">${icon("download")} Download Access Codes</button><button class="btn sm ghost" id="newcodes">${icon("refresh")} New Codes for Everyone</button></div>
         <div class="field-gap"></div><label>Instructor Name <span class="faint">(shown to students)</span></label><input id="st_ins" maxlength="120" value="${esc(sec.instructor || "")}" placeholder="e.g. Wahidul Alam Riyad" />
         <div style="height:16px"></div><button class="btn" id="savepf">${icon("check")} Save</button></div>
       <div class="card"><div class="card-head"><div><h2>Grading</h2><div class="sub">Grade scale for this section</div></div><button class="btn sm ghost" id="gsreset">${icon("refresh")} AIUB Default</button></div>
@@ -1323,8 +1329,16 @@
     const sec = S.sec, c = sec.course;
     $("#savepf").onclick = async () => { const on = $("#st_pub").checked;
       if (on && !sec.portfolio_published && !(await App.confirm("Publish portfolios?", "Students will see their marks, grade, course outcomes and attendance by typing their Student ID.", "Publish", false))) return;
-      const upd = { portfolio_published: on, instructor: $("#st_ins").value.trim() || null };
+      const upd = { portfolio_published: on, portfolio_code_required: $("#st_code").checked, instructor: $("#st_ins").value.trim() || null };
       try { await q(sb.from("sections").update(upd).eq("id", sec.id)); Object.assign(sec, upd); try { localStorage.setItem("att_instructor", upd.instructor || ""); } catch {} drawSection(); App.toast("Saved"); } catch (x) { fail(x); } };
+    $("#dlcodes").onclick = async () => {
+      try { const rows = await App.fetchAll(() => sb.from("students").select("student_id, name, access_code, seq").eq("section_id", sec.id).order("seq").order("student_id"));
+        const ws = XLSX.utils.aoa_to_sheet([["Student ID", "Student Name", "Access Code"], ...rows.map((r) => [r.student_id, App.nameCase(r.name), r.access_code])]);
+        ws["!cols"] = [{ wch: 14 }, { wch: 34 }, { wch: 14 }]; const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Access Codes");
+        XLSX.writeFile(wb, `Classfolio_Access_Codes_${safe(sec.course.code)}_Sec-${safe(sec.name)}.xlsx`); App.toast("Access codes downloaded — give each student only their own code"); } catch (x) { fail(x); } };
+    $("#newcodes").onclick = async () => {
+      if (!(await App.confirm("New codes for everyone?", "Every student in this section gets a new access code. The old codes stop working right away — download and share the new list.", "Make New Codes"))) return;
+      try { const { data, error } = await sb.rpc("reset_access_codes", { p_section: sec.id }); if (error) throw error; App.toast(`${data} new access codes made`); } catch (x) { fail(x); } };
     const readScale = () => $$("#gst tbody tr").map((tr) => ({ grade: tr.querySelector("[data-k=grade]").value.trim(), min: +tr.querySelector("[data-k=min]").value, point: +tr.querySelector("[data-k=point]").value })).filter((g) => g.grade);
     $("#gsreset").onclick = () => { sec.grade_scale = Grade.AIUB_SCALE.map((g) => ({ ...g })); tabSettings(); App.toast("AIUB scale loaded — press Save Grading"); };
     $("#gsadd").onclick = () => { sec.grade_scale = [...readScale(), { grade: "", min: 0, point: 0 }]; tabSettings(); };
