@@ -8,6 +8,8 @@
 window.APP_CONFIG = {
   SUPABASE_URL: "https://yqprzeooqffmuhcjqhge.supabase.co",
   SUPABASE_ANON_KEY: "sb_publishable_jwVJpLFAxYHkyrehTQwtRA_TWhgjhpv",
+  
+  // Faculty sign-up is only allowed with this email domain (also enforced in the database)
   FACULTY_EMAIL_DOMAIN: "aiub.edu",
 
   // Shown in page headers
