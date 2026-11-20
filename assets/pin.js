@@ -8,7 +8,7 @@
 
   if (!App.configured) { document.body.classList.remove("pin-screen"); document.body.innerHTML = App.notConfiguredHtml(); return; }
   const msgPage = (t, b) => { document.body.classList.remove("pin-screen");
-    root.innerHTML = `<div class="corner">${App.theme.button()}</div><div class="center-wrap"><div class="card" style="max-width:520px"><div class="empty"><div class="ic">${icon("alert")}</div><h3>${esc(t)}</h3><p>${esc(b)}</p><a class="btn" href="admin.html">Go to admin</a></div></div></div>`; };
+    root.innerHTML = `<div class="corner">${App.theme.button()}</div><div class="center-wrap"><div class="card" style="max-width:520px"><div class="empty"><div class="ic">${icon("alert")}</div><h3>${esc(t)}</h3><p>${esc(b)}</p><a class="btn" href="admin.html">Go to Admin</a></div></div></div>`; };
 
   async function loadContext() {
     const { data, error } = await sb.from("classes")
@@ -25,10 +25,10 @@
     root.innerHTML = `<div class="pin-wrap" id="wrap">
       <section class="pin-main">
         <div class="top-actions">
-          <a class="btn ghost sm" href="admin.html#/section/${esc(s.id)}/classes">${icon("back")} Back to section</a>
+          <a class="btn ghost sm" href="admin.html#/section/${esc(s.id)}/classes">${icon("back")} Back to Section</a>
           <div class="btn-group">
-            <button class="icon-btn bordered" id="focus" title="Hide / show side panel (H)">${icon("eye")}</button>
-            <button class="icon-btn bordered" id="fs" title="Full screen (F)">${icon("maximize")}</button>
+            <button class="icon-btn bordered" id="focus" title="Hide / Show Side Panel (H)">${icon("eye")}</button>
+            <button class="icon-btn bordered" id="fs" title="Full Screen (F)">${icon("maximize")}</button>
             ${App.theme.button()}
           </div>
         </div>
@@ -40,12 +40,12 @@
         <div class="pin-chips" id="chips"></div>
       </section>
       <aside class="pin-side">
-        <div><h2>Scan to check in</h2><div class="qr" id="qr"></div>
+        <div><h2>Scan to Check In</h2><div class="qr" id="qr"></div>
           <div class="linkbox" style="margin-top:12px"><code>${esc(link.replace(/^https?:\/\//, ""))}</code><button class="btn sm secondary" id="copy">${icon("copy")}</button></div></div>
         <div><h2>Attendance</h2><div class="counter-box"><div class="ring" id="ring"></div>
           <div><div class="counter" id="present">0</div><div class="muted small">of <b id="enrolled">0</b> students checked in</div><div class="small" id="latecnt"></div></div></div></div>
         <div id="controls"></div>
-        <div class="grow"><h2>Latest check-ins</h2><ul class="feed" id="feed"><li class="muted">No check-ins yet.</li></ul></div>
+        <div class="grow"><h2>Latest Check-Ins</h2><ul class="feed" id="feed"><li class="muted">No check-ins yet.</li></ul></div>
       </aside></div>`;
     try { new QRCode(document.getElementById("qr"), { text: link, width: 300, height: 300, correctLevel: QRCode.CorrectLevel.M }); } catch {}
     document.getElementById("copy").onclick = () => App.copy(link, "Student link copied");
@@ -62,17 +62,17 @@
     if (state && state.is_open) {
       c.innerHTML = `<h2>Session</h2><div class="btn-group" style="width:100%">
         <button class="btn amber grow" id="ext">${icon("plus")} 5 min</button>
-        <button class="btn red grow" id="close">${icon("stop")} End attendance</button></div>`;
+        <button class="btn red grow" id="close">${icon("stop")} End Attendance</button></div>`;
       document.getElementById("ext").onclick = async () => { const { error } = await sb.rpc("extend_class", { p_class_id: classId, p_minutes: 5 }); if (error) App.toast(error.message, true); else { App.toast("Extended by 5 minutes"); refresh(); } };
       document.getElementById("close").onclick = async () => {
-        if (!(await App.confirm("End attendance now?", "Students will no longer be able to check in for this class. You can still mark students by hand later.", "End now"))) return;
+        if (!(await App.confirm("End Attendance Now?", "Students will no longer be able to check in for this class. You can still mark students by hand later.", "End Now"))) return;
         const { error } = await sb.rpc("close_class", { p_class_id: classId }); if (error) App.toast(error.message, true); else { App.toast("Attendance ended"); refresh(); }
       };
     } else {
       let mins = def;
-      c.innerHTML = `<h2>Start attendance</h2><div class="label">Keep it open for</div>
+      c.innerHTML = `<h2>Start Attendance</h2><div class="label">Keep It Open For</div>
         <div class="seg lenpick" id="len">${[3, 5, 10, 15, 20, 30].map((m) => `<button data-m="${m}" class="${m === def ? "on" : ""}">${m} min</button>`).join("")}</div>
-        <div style="height:14px"></div><button class="btn green lg block" id="start">${icon("play")} Start attendance</button>
+        <div style="height:14px"></div><button class="btn green lg block" id="start">${icon("play")} Start Attendance</button>
         ${ctx.term.section.late_after_minutes ? `<p class="hint">Check-ins after ${ctx.term.section.late_after_minutes} min are marked <b>late</b>.</p>` : ""}
         ${state && state.present && next ? `<div style="height:10px"></div><a class="btn secondary block" href="pin.html?class=${next.id}">Next: ${App.classLabel(next.number)} ${icon("chevron")}</a>` : ""}`;
       App.$$("#len button").forEach((b) => (b.onclick = () => { mins = +b.dataset.m; App.$$("#len button").forEach((x) => x.classList.toggle("on", x === b)); }));
@@ -101,7 +101,7 @@
       lastPin = ""; d.innerHTML = digitsHtml("------"); d.classList.add("dim"); document.getElementById("bar").style.width = "0%";
       document.getElementById("hint").innerHTML = data.present
         ? `Attendance is <b>closed</b> · ${data.present} of ${data.enrolled} checked in. Start again to let late students in.`
-        : `Attendance is <b>closed</b>. Pick a length on the right and press <b>Start attendance</b>.`;
+        : `Attendance is <b>closed</b>. Pick a length on the right and press <b>Start Attendance</b>.`;
       document.getElementById("chips").innerHTML = "";
     }
     if (changed) controls();
@@ -117,9 +117,9 @@
     const secs = Math.max(0, Math.round((new Date(state.expires_at) - now) / 1000));
     document.getElementById("hint").innerHTML = `New PIN in <b>${Math.ceil(left)}s</b>`;
     const lateAt = state.late_at && new Date(state.late_at);
-    document.getElementById("chips").innerHTML = `<span class="chip">${icon("clock")} Closes in <b>&nbsp;${Math.floor(secs / 60)}:${App.pad2(secs % 60)}</b></span>` +
-      (lateAt ? (now < lateAt ? `<span class="chip">${icon("alert")} Late after ${App.fmtTime(lateAt).slice(0, 5)}</span>` : `<span class="chip" style="color:var(--warning)">${icon("alert")} Marking late now</span>`) : "") +
-      `<span class="chip">${icon("smartphone")} Open the link · type ID + PIN</span>`;
+    document.getElementById("chips").innerHTML = `<span class="chip">${icon("clock")} Closes In <b>&nbsp;${Math.floor(secs / 60)}:${App.pad2(secs % 60)}</b></span>` +
+      (lateAt ? (now < lateAt ? `<span class="chip">${icon("alert")} Late After ${App.fmtTime(lateAt).slice(0, 5)}</span>` : `<span class="chip" style="color:var(--warning)">${icon("alert")} Marking Late Now</span>`) : "") +
+      `<span class="chip">${icon("smartphone")} Open the Link · Type ID + PIN</span>`;
   }
 
   async function feed() {
@@ -129,18 +129,18 @@
     const late = data.filter((r) => r.status === "late").length;
     document.getElementById("latecnt").innerHTML = late ? `<span class="badge amber" style="margin-top:6px">${late} late</span>` : "";
     const ul = document.getElementById("feed");
-    const html = data.length ? data.map((r) => `<li><div class="avatar" style="width:34px;height:34px;font-size:12px">${esc(App.initials(r.student_name || r.student_id))}</div>
-        <div class="grow"><b>${esc(r.student_id)}</b><span>${esc(r.student_name)}</span></div>
+    const html = data.length ? data.map((r) => `<li><div class="avatar" style="width:34px;height:34px;font-size:12px">${esc(App.initials(App.nameCase(r.student_name) || r.student_id))}</div>
+        <div class="grow"><b>${esc(r.student_id)}</b><span>${esc(App.nameCase(r.student_name))}</span></div>
         ${r.status === "late" ? `<span class="badge amber">Late</span>` : r.status === "excused" ? `<span class="badge violet">Excused</span>` : r.source === "manual" ? `<span class="badge blue">Manual</span>` : ""}
         <time>${App.fmtTime(r.submitted_at)}</time></li>`).join("") : `<li class="muted">No check-ins yet.</li>`;
     if (ul.dataset.h !== html) { ul.innerHTML = html; ul.dataset.h = html; }
   }
 
   (async () => {
-    if (!classId) return msgPage("No class selected", "Open the PIN screen from the Classes tab of a section.");
+    if (!classId) return msgPage("No Class Selected", "Open the PIN screen from the Classes tab of a section.");
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { location.href = "admin.html"; return; }
-    try { await loadContext(); } catch { return msgPage("Class not found", "This class does not exist or belongs to another account."); }
+    try { await loadContext(); } catch { return msgPage("Class Not Found", "This class does not exist or belongs to another account."); }
     shell(); await refresh(); feed();
     setInterval(refresh, 1000);            // PIN comes from the server every second (no clock drift)
     setInterval(animate, 200);

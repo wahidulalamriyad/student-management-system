@@ -14,7 +14,7 @@
       <div class="t2">${esc(cfg.INSTITUTION || "")}</div></div></div>${App.theme.button()}</div>`;
   function header() {
     if (!info) return `<div class="head"><div class="title">Class Attendance</div></div>`;
-    return `<div class="head"><div class="code">${esc(info.course_code)}${info.class_code ? " · Class code " + esc(info.class_code) : ""}</div>
+    return `<div class="head"><div class="code">${esc(info.course_code)}${info.class_code ? " · Class Code " + esc(info.class_code) : ""}</div>
       <div class="title">${esc(info.course_title)}</div><div class="meta">Section ${esc(info.section)} · ${esc(info.intake)}</div></div>`;
   }
   const shell = (inner) => `<div class="student-wrap">${top()}<div class="student">${header()}<div class="body">${inner}</div></div>
@@ -28,17 +28,17 @@
     view = "form";
     const a = info && info.active, id = state.id ?? savedId();
     root.innerHTML = shell(`
-      ${a ? `<div class="status-pill open"><span class="live-dot"></span><div class="grow">Attendance is open<small>${esc(a.term)} · ${App.classLabel(a.number)}${a.title ? " · " + esc(a.title) : ""}</small></div>
+      ${a ? `<div class="status-pill open"><span class="live-dot"></span><div class="grow">Attendance Is Open<small>${esc(a.term)} · ${App.classLabel(a.number)}${a.title ? " · " + esc(a.title) : ""}</small></div>
               <span class="count" id="cd" title="Time left">${left(a.expires_at)}</span></div>`
-          : `<div class="status-pill closed">${icon("clock")}<div class="grow">Attendance is not open yet<small>This page updates by itself when your instructor starts.</small></div><span class="spinner" style="width:18px;height:18px"></span></div>`}
+          : `<div class="status-pill closed">${icon("clock")}<div class="grow">Attendance Is Not Open Yet<small>This page updates by itself when your instructor starts.</small></div><span class="spinner" style="width:18px;height:18px"></span></div>`}
       <form id="f" autocomplete="off" novalidate>
         <label for="sid">Student ID</label>
         <input id="sid" class="id-input" inputmode="text" autocapitalize="characters" spellcheck="false" placeholder="${esc(cfg.STUDENT_ID_EXAMPLE || "")}" value="${esc(id)}" maxlength="30" required />
         <div class="field-gap"></div>
-        <label>6-digit PIN on the class screen</label>
+        <label>6-Digit PIN on the Class Screen</label>
         <div class="otp" id="otp">${Array.from({ length: 6 }, (_, i) => `<input inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="PIN digit ${i + 1}" ${a ? "" : "disabled"} />`).join("")}</div>
         <div class="field-gap"></div>
-        <button class="btn lg block" type="submit" id="go" ${a ? "" : "disabled"}>${icon("check")} Record my attendance</button>
+        <button class="btn lg block" type="submit" id="go" ${a ? "" : "disabled"}>${icon("check")} Record My Attendance</button>
         ${state.error ? `<div class="msg err">${icon("alert")}<div>${esc(state.error)}</div></div>` : ""}
         <p class="muted small center" style="margin:16px 0 0">The PIN changes every 15 seconds — type the one on the screen now.</p>
       </form>`);
@@ -79,17 +79,17 @@
     root.innerHTML = shell(`<div class="result ${kind}">
         <div class="check">${icon(ok ? (late ? "clock" : "check") : "x")}</div>
         <h2>${esc(r.message)}</h2>
-        ${r.name ? `<div class="who">${esc(r.name)}</div>` : ""}
+        ${r.name ? `<div class="who">${esc(App.nameCase(r.name))}</div>` : ""}
         <div class="det">${esc(id)}${r.term ? " · " + esc(r.term) + " · " + App.classLabel(r.class) : ""}</div>
         ${r.at ? `<div class="det">${App.fmtDate(r.at)}</div>` : ""}
-        ${ok && r.status ? `<div style="margin-top:12px"><span class="badge ${late ? "amber" : r.status === "excused" ? "violet" : "green"}">${late ? "Late" : r.status === "excused" ? "Excused" : "On time"}</span></div>` : ""}
+        ${ok && r.status ? `<div style="margin-top:12px"><span class="badge ${late ? "amber" : r.status === "excused" ? "violet" : "green"}">${late ? "Late" : r.status === "excused" ? "Excused" : "On Time"}</span></div>` : ""}
       </div>
       ${s && s.held ? `<div class="summary"><div class="ring">${App.ring(pct, 76, 8, low ? "var(--danger)" : "var(--success)")}<b>${pct}%</b></div>
         <div class="t">You have attended <b>${s.attended}</b> of <b>${s.held}</b> classes so far${s.late ? `, <b>${s.late}</b> late` : ""}.
         ${low ? `<div class="msg warn" style="margin-top:10px">${icon("alert")}<div>Below the ${s.min_pct}% minimum. Try not to miss more classes.</div></div>` : `<div class="small muted" style="margin-top:6px">Keep it up!</div>`}</div></div>` : ""}
       <div style="margin-top:22px">${ok ? `<p class="muted small center" style="margin:0 0 12px">You can close this page now.</p>
-        <button class="btn ghost block" id="other">${icon("user")} Check in a different ID</button>`
-        : `<button class="btn lg block" id="again">${icon("refresh")} Try again</button>`}</div>`);
+        <button class="btn ghost block" id="other">${icon("user")} Check In a Different ID</button>`
+        : `<button class="btn lg block" id="again">${icon("refresh")} Try Again</button>`}</div>`);
     const again = document.getElementById("again"); if (again) again.onclick = () => renderForm({ id });
     const other = document.getElementById("other"); if (other) other.onclick = () => { try { localStorage.removeItem("att_last_id"); } catch {} load().then(() => { renderForm({ id: "" }); startPoll(); }); };
   }

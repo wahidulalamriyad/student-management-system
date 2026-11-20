@@ -117,6 +117,12 @@
     fmtDay(d) { return d ? new Date(d + (String(d).length === 10 ? "T00:00:00" : "")).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" }) : ""; },
     pad2(n) { return String(n).padStart(2, "0"); },
     classLabel(n) { return "Class-" + String(n).padStart(2, "0"); },
+    // "RAYDOAN, MD. MUSFIQUR RAHMAN" -> "Raydoan, Md. Musfiqur Rahman" (only changes ALL-CAPS / all-lowercase names)
+    nameCase(s) {
+      s = String(s ?? "").trim();
+      if (!s || (s !== s.toUpperCase() && s !== s.toLowerCase())) return s;
+      return s.toLowerCase().replace(/(^|[\s\-'.(,\/])(\p{L})/gu, (m, p, c) => p + c.toUpperCase());
+    },
     initials(s) { return String(s || "?").split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?"; },
     pctClass(p, min = 80) { return p == null ? "" : p >= min ? "pct-good" : p >= min - 10 ? "pct-warn" : "pct-bad"; },
     progress(p, min = 80) { const c = p == null ? "" : p >= min ? "" : p >= min - 10 ? "warn" : "bad"; return `<div class="progress ${c}"><span style="width:${Math.max(0, Math.min(100, p || 0))}%"></span></div>`; },
@@ -153,7 +159,7 @@
 
     notConfiguredHtml() {
       return `<div class="corner">${theme.button()}</div><div class="center-wrap"><div class="card" style="max-width:560px">
-        <div class="empty" style="padding:10px"><div class="ic">${icon("settings")}</div><h3>Setup needed</h3>
+        <div class="empty" style="padding:10px"><div class="ic">${icon("settings")}</div><h3>Setup Needed</h3>
         <p>Open <code>config.js</code> and fill in <b>SUPABASE_URL</b> (Project URL) and <b>SUPABASE_ANON_KEY</b> (publishable key) from your Supabase project. See <code>README.md</code>.</p></div></div></div>`;
     },
   };
