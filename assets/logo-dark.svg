@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Classfolio">
+  <defs>
+    <linearGradient id="cfd-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#242424"/><stop offset="1" stop-color="#141414"/>
+    </linearGradient>
+    <linearGradient id="cfd-g" x1="12" y1="20" x2="52" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3ecf8e"/><stop offset="1" stop-color="#a3e9c5"/>
+    </linearGradient>
+  </defs>
+  <rect x=".75" y=".75" width="62.5" height="62.5" rx="17.5" fill="url(#cfd-bg)" stroke="#3ecf8e" stroke-opacity=".45" stroke-width="1.5"/>
+  <path d="M12 21.5c6.3-2.9 13-2.9 20 1.8 7-4.7 13.7-4.7 20-1.8v22c-6.3-2.9-13-2.9-20 1.8-7-4.7-13.7-4.7-20-1.8z" fill="#3ecf8e" fill-opacity=".1" stroke="#fafafa" stroke-width="2.6" stroke-linejoin="round"/>
+  <path d="M32 23.3v22" stroke="#fafafa" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M17.5 29.5h8.5M17.5 35h6" stroke="#b4b4b4" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M37.5 33.2l3.6 3.6 7-7.6" fill="none" stroke="url(#cfd-g)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

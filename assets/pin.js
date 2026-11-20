@@ -43,7 +43,7 @@
         <div><h2>Scan to Check In</h2><div class="qr" id="qr"></div>
           <div class="linkbox" style="margin-top:12px"><code>${esc(link.replace(/^https?:\/\//, ""))}</code><button class="btn sm secondary" id="copy">${icon("copy")}</button></div></div>
         <div><h2>Attendance</h2><div class="counter-box"><div class="ring" id="ring"></div>
-          <div><div class="counter" id="present">0</div><div class="muted small">of <b id="enrolled">0</b> students checked in</div><div class="small" id="latecnt"></div></div></div></div>
+          <div><div class="counter" id="present">0</div><div class="muted small">of <b id="enrolled">0</b> Students Checked In</div><div class="small" id="latecnt"></div></div></div></div>
         <div id="controls"></div>
         <div class="grow"><h2>Latest Check-Ins</h2><ul class="feed" id="feed"><li class="muted">No check-ins yet.</li></ul></div>
       </aside></div>`;
@@ -63,10 +63,10 @@
       c.innerHTML = `<h2>Session</h2><div class="btn-group" style="width:100%">
         <button class="btn amber grow" id="ext">${icon("plus")} 5 min</button>
         <button class="btn red grow" id="close">${icon("stop")} End Attendance</button></div>`;
-      document.getElementById("ext").onclick = async () => { const { error } = await sb.rpc("extend_class", { p_class_id: classId, p_minutes: 5 }); if (error) App.toast(error.message, true); else { App.toast("Extended by 5 minutes"); refresh(); } };
+      document.getElementById("ext").onclick = async () => { const { error } = await sb.rpc("extend_class", { p_class_id: classId, p_minutes: 5 }); if (error) App.toast(error.message, true); else { App.toast("Extended by 5 Minutes"); refresh(); } };
       document.getElementById("close").onclick = async () => {
         if (!(await App.confirm("End Attendance Now?", "Students will no longer be able to check in for this class. You can still mark students by hand later.", "End Now"))) return;
-        const { error } = await sb.rpc("close_class", { p_class_id: classId }); if (error) App.toast(error.message, true); else { App.toast("Attendance ended"); refresh(); }
+        const { error } = await sb.rpc("close_class", { p_class_id: classId }); if (error) App.toast(error.message, true); else { App.toast("Attendance Ended"); refresh(); }
       };
     } else {
       let mins = def;
@@ -79,7 +79,7 @@
       document.getElementById("start").onclick = async () => {
         const { error } = await sb.rpc("open_class", { p_class_id: classId, p_minutes: mins });
         if (error) return App.toast(error.message, true);
-        App.toast("Attendance started"); refresh();
+        App.toast("Attendance Started"); refresh();
       };
     }
   }
@@ -127,7 +127,7 @@
       .eq("class_id", classId).order("submitted_at", { ascending: false }).limit(30);
     if (error) return;
     const late = data.filter((r) => r.status === "late").length;
-    document.getElementById("latecnt").innerHTML = late ? `<span class="badge amber" style="margin-top:6px">${late} late</span>` : "";
+    document.getElementById("latecnt").innerHTML = late ? `<span class="badge amber" style="margin-top:6px">${late} Late</span>` : "";
     const ul = document.getElementById("feed");
     const html = data.length ? data.map((r) => `<li><div class="avatar" style="width:34px;height:34px;font-size:12px">${esc(App.initials(App.nameCase(r.student_name) || r.student_id))}</div>
         <div class="grow"><b>${esc(r.student_id)}</b><span>${esc(App.nameCase(r.student_name))}</span></div>

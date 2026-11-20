@@ -10,7 +10,7 @@
   if (!App.configured) { document.body.innerHTML = App.notConfiguredHtml(); return; }
   const norm = (v) => String(v || "").trim().toUpperCase().replace(/\s+/g, "");
   const left = (exp) => { const s = Math.max(0, Math.round((new Date(exp) - Date.now()) / 1000)); return `${Math.floor(s / 60)}:${App.pad2(s % 60)}`; };
-  const top = (extra = "") => `<div class="portal-top"><a class="brand" href="#/"><div class="logo">${icon("logo")}</div><div><div class="t1">Classfolio</div><div class="t2">Student Portal${cfg.INSTITUTION ? " · " + esc(cfg.INSTITUTION) : ""}</div></div></a>
+  const top = (extra = "") => `<div class="portal-top"><a class="brand" href="#/">${App.brand("Student Portal" + (cfg.INSTITUTION ? " · " + cfg.INSTITUTION : ""))}</a>
       <div class="btn-group" style="align-items:center">${extra}${App.theme.button()}</div></div>`;
   const shell = (inner, extra) => { root.innerHTML = `<div class="portal">${top(extra)}${inner}</div>`; };
 
@@ -18,7 +18,7 @@
   function renderStart(err = "") {
     stop();
     shell(`<div class="portal-hero"><div class="card">
-        <div class="logo-lg" style="width:56px;height:56px;border-radius:16px;display:grid;place-items:center;color:#fff;margin-bottom:22px;background:linear-gradient(135deg,#4f6bff,#2b44c2);box-shadow:0 12px 28px -10px rgba(51,85,214,.8)">${icon("user")}</div>
+        ${App.logoBig()}
         <h1>Welcome to Classfolio</h1><p class="muted" style="margin:8px 0 24px">Type your Student ID to mark attendance and see your course portfolio.</p>
         <form id="f" novalidate><label for="sid">Student ID</label>
           <input id="sid" class="id-input" autocapitalize="characters" spellcheck="false" autocomplete="off" placeholder="${esc(cfg.STUDENT_ID_EXAMPLE || "")}" value="${esc(sid)}" maxlength="30" />
@@ -54,21 +54,25 @@
       : open.length && !(lastResult && lastResult.ok) ? `<div class="checkin-card"><div class="checkin-done" style="position:relative;z-index:1"><div class="check">${icon("check")}</div>
           <div><h2>Attendance Recorded</h2><div class="sub">${open.map((s) => `${esc(s.course_code)} · ${App.classLabel(s.active.number)} · ${s.active.status === "late" ? "Late" : s.active.status === "excused" ? "Excused" : "On Time"}`).join("<br>")}</div></div></div></div>`
       : open.length ? "" : `<div class="card" style="display:flex;gap:14px;align-items:center"><div class="stat" style="border:0;box-shadow:none;padding:0;background:none"><div class="ic">${icon("clock")}</div></div>
-          <div class="grow"><b>No class is taking attendance right now</b><div class="small muted">When your instructor starts, a PIN box appears here automatically.</div></div><span class="spinner" style="width:18px;height:18px"></span></div>`;
+          <div class="grow"><b>No Class Is Taking Attendance Right Now</b><div class="small muted">When your instructor starts, a PIN box appears here automatically.</div></div><span class="spinner" style="width:18px;height:18px"></span></div>`;
     const courses = L.sections.map((s) => { const sm = s.summary || {}, p = sm.pct, min = sm.min_pct ?? 80;
-      return `<button class="course-card ${s.published ? "" : "locked"}" data-tok="${esc(s.token)}" ${s.published ? "" : "disabled"}>
+      return `<div class="course-card ${s.published ? "" : "locked"}" data-tok="${esc(s.token)}" data-pub="${s.published ? 1 : 0}" ${s.published ? `role="button" tabindex="0"` : ""}>
         <div class="row center-y" style="gap:12px;align-items:flex-start"><div class="grow"><div class="code" style="font-size:12.5px;font-weight:700;color:var(--primary)">${esc(s.course_code)}${s.credit_hours ? ` · ${+s.credit_hours} Credit${+s.credit_hours === 1 ? "" : "s"}` : ""}</div>
           <div style="font-size:17px;font-weight:700;margin-top:3px;line-height:1.3">${esc(s.course_title)}</div></div><div class="sec-letter" style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-weight:800;background:var(--primary-soft);color:var(--primary)">${esc(s.section)}</div></div>
-        <div class="small muted" style="display:flex;gap:14px;flex-wrap:wrap"><span>${icon("calendar")} ${esc(s.intake)}</span>${s.instructor ? `<span>${icon("user")} ${esc(s.instructor)}</span>` : ""}</div>
+        <div class="small muted"><span>${icon("calendar")} ${esc(s.intake)}</span></div>
+        ${s.instructor ? `<div class="inst-row" data-fac="${esc(s.token)}" role="button" tabindex="0" title="View Instructor Profile">${App.avatar(s.instructor_photo, s.instructor, 38)}
+          <div style="min-width:0;flex:1"><b>${esc(s.instructor)}</b><div class="xs muted">${esc(s.instructor_designation || "Instructor")} · View Profile</div></div>${icon("chevron")}</div>` : ""}
         <div><div class="row center-y" style="justify-content:space-between;margin-bottom:6px"><span class="small muted">Attendance</span><b class="${App.pctClass(p, min)}">${p == null ? "—" : p + "%"}</b></div>${App.progress(p, min)}
-          <div class="xs faint" style="margin-top:6px">${sm.held ? `${sm.attended} of ${sm.held} class${sm.held === 1 ? "" : "es"}${sm.late ? ` · ${sm.late} late` : ""}` : "No classes yet"}</div></div>
+          <div class="xs faint" style="margin-top:6px">${sm.held ? `${sm.attended} of ${sm.held} class${sm.held === 1 ? "" : "es"}${sm.late ? ` · ${sm.late} late` : ""}` : "No Classes Yet"}</div></div>
         <div class="foot">
-          ${s.published ? `<span class="small" style="color:var(--primary);font-weight:650">${s.needs_code && !getCode(s.token) ? `${icon("key")} ` : ""}View My Portfolio</span>${icon("chevron")}` : `<span class="small faint">${icon("clock")} Portfolio not published yet</span>`}</div></button>`; }).join("");
+          ${s.published ? `<span class="small" style="color:var(--primary);font-weight:650">${s.needs_code && !getCode(s.token) ? `${icon("key")} ` : ""}View My Portfolio</span>${icon("chevron")}` : `<span class="small faint">${icon("clock")} Portfolio Not Published Yet</span>`}</div></div>`; }).join("");
     shell(`<div class="stack">${lastResult ? resultHtml(lastResult) : ""}${checkin}
-        <div><div class="card-head" style="margin-top:10px"><div><h2>My Courses</h2><div class="sub">${L.sections.length} course${L.sections.length === 1 ? "" : "s"} this semester</div></div></div>
+        <div><div class="card-head" style="margin-top:10px"><div><h2>My Courses</h2><div class="sub">${L.sections.length} Course${L.sections.length === 1 ? "" : "s"} This Semester</div></div></div>
         <div class="course-grid">${courses}</div></div></div>`, who);
     $("#out").onclick = () => { try { localStorage.removeItem("att_last_id"); Object.keys(localStorage).filter((k) => k.startsWith("cf_code_")).forEach((k) => localStorage.removeItem(k)); } catch {} sid = ""; L = null; lastResult = null; renderStart(); };
-    $$(".course-card[data-tok]").forEach((b) => (b.onclick = () => { if (!b.disabled) location.hash = `#/course/${b.dataset.tok}`; }));
+    $$(".course-card[data-tok]").forEach((b) => (b.onclick = (e) => { if (e.target.closest("[data-fac]")) return; if (b.dataset.pub === "1") location.hash = `#/course/${b.dataset.tok}`; }));
+    $$(".course-card[data-pub='1']").forEach((b) => (b.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && !e.target.closest("[data-fac]")) { e.preventDefault(); location.hash = `#/course/${b.dataset.tok}`; } }));
+    $$("[data-fac]").forEach((el) => { const open = (e) => { e.stopPropagation(); showFaculty(el.dataset.fac); }; el.onclick = open; el.onkeydown = (e) => (e.key === "Enter" || e.key === " ") && open(e); });
     if (pending.length) bindOtp();
     const x = $("#dismiss"); if (x) x.onclick = () => { lastResult = null; renderHome(); };
     start();
@@ -120,13 +124,24 @@
   }
   function stop() { clearInterval(poll); clearInterval(clock); }
 
+  async function showFaculty(tok) {
+    const s = L?.sections.find((x) => x.token === tok);
+    App.dialog({ title: "Instructor Profile", ic: "user", okText: "", cancelText: "Close", html: true, wide: true, body: `<div class="loading"><span class="spinner"></span> Loading…</div>` });
+    const m = $$(".modal-bg").pop(), body = m.querySelector(".dlg-body");
+    try {
+      const { data, error } = await sb.rpc("portal_faculty", { p_token: tok, p_student_id: sid });
+      if (error) throw error;
+      body.innerHTML = data.ok ? `${s ? `<div class="small muted" style="margin-bottom:16px">${esc(s.course_code)} · ${esc(s.course_title)} · Section ${esc(s.section)}</div>` : ""}${Grade.facultyCard(data.faculty)}` : `<div class="msg err">${icon("alert")}<div>${esc(data.message)}</div></div>`;
+    } catch { body.innerHTML = `<div class="msg err">${icon("alert")}<div>Could not load the profile. Check your connection.</div></div>`; }
+  }
+
   // ---------------- portfolio
   const codeKey = (tok) => `cf_code_${tok}_${sid}`;
   const getCode = (tok) => { try { return localStorage.getItem(codeKey(tok)) || null; } catch { return null; } };
   function renderCode(tok, msg, back) {
     const s = L?.sections.find((x) => x.token === tok);
     shell(`<div class="portal-hero" style="margin-top:4vh"><div class="card">
-        <div class="logo-lg" style="width:56px;height:56px;border-radius:16px;display:grid;place-items:center;color:#fff;margin-bottom:22px;background:linear-gradient(135deg,#4f6bff,#2b44c2)">${icon("key")}</div>
+        <div class="logo-lg">${icon("key")}</div>
         <h1 style="font-size:22px">Portfolio Access Code</h1><p class="muted" style="margin:8px 0 22px">${s ? `${esc(s.course_code)} · ${esc(s.course_title)} · Section ${esc(s.section)}<br>` : ""}Enter the 6-character code your instructor gave you. You only need to do this once on this device.</p>
         <form id="cf" novalidate><label for="code">Access Code</label><input id="code" class="id-input" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="12" placeholder="e.g. K7Q2MX" style="letter-spacing:.2em;text-align:center" />
           <div style="height:18px"></div><button class="btn lg block" id="cgo">${icon("key")} Open My Portfolio</button>

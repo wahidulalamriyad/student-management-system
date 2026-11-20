@@ -9,7 +9,15 @@
 
   // ---- icons (Lucide-style, inline SVG) ----
   const P = {
-    logo: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+    logo: '<path d="M2.5 6.3c2.9-1.3 6-1.3 9.5.8 3.5-2.1 6.6-2.1 9.5-.8v10.6c-2.9-1.3-6-1.3-9.5.8-3.5-2.1-6.6-2.1-9.5-.8z"/><path d="M12 7.1v10.6"/><path d="M5.2 10h3.8M5.2 12.7h2.6"/><path d="M14.4 12.1l1.7 1.7 3.2-3.5" stroke="#7dffb3"/>',
+    camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+    globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+    mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
+    pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+    graduation: '<path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/>',
+    sparkles: '<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
+    briefcase: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>',
+    lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
     moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
@@ -61,7 +69,7 @@
     get() { return document.documentElement.dataset.theme || "light"; },
     set(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("att_theme", t); } catch {} document.dispatchEvent(new CustomEvent("themechange", { detail: t })); },
     toggle() { theme.set(theme.get() === "dark" ? "light" : "dark"); },
-    button() { return `<button class="theme-btn" data-theme-toggle title="Switch light / dark mode" aria-label="Switch light or dark mode">${icon("moon", "moon")}${icon("sun", "sun")}</button>`; },
+    button() { return `<button class="theme-btn" data-theme-toggle title="Switch Light / Dark Mode" aria-label="Switch light or dark mode">${icon("moon", "moon")}${icon("sun", "sun")}</button>`; },
   };
   if (!document.documentElement.dataset.theme) {
     let t = null; try { t = localStorage.getItem("att_theme"); } catch {}
@@ -69,15 +77,41 @@
   }
   document.addEventListener("click", (e) => { if (e.target.closest("[data-theme-toggle]")) theme.toggle(); });
 
+  // "Remember Me": keep the faculty session in localStorage (stays signed in) or sessionStorage (ends when the browser closes)
+  function rememberMe() { try { return localStorage.getItem("cf_remember") !== "0"; } catch { return true; } }
+  const authStorage = {
+    getItem(k) { try { return sessionStorage.getItem(k) ?? localStorage.getItem(k); } catch { return null; } },
+    setItem(k, v) { try { const keep = rememberMe(); (keep ? localStorage : sessionStorage).setItem(k, v); (keep ? sessionStorage : localStorage).removeItem(k); } catch {} },
+    removeItem(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch {} },
+  };
+
   const App = {
     cfg, configured, icon, theme,
-    sb: configured ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, { auth: { persistSession: true, detectSessionInUrl: true } }) : null,
+    sb: configured ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, { auth: { persistSession: true, detectSessionInUrl: true, storage: authStorage, storageKey: "classfolio-auth" } }) : null,
+    remember: { get: rememberMe, set(v) { try { localStorage.setItem("cf_remember", v ? "1" : "0"); } catch {} } },
+    // brand block (logo + wordmark)
+    brand(sub = "") {
+      return `<img class="logo-img logo-light" src="assets/logo.svg" alt="" width="40" height="40" /><img class="logo-img logo-dark" src="assets/logo-dark.svg" alt="" width="40" height="40" /><span class="brand-text"><span class="t1">Class<span class="folio">folio</span></span>${sub ? `<span class="t2">${App.esc(sub)}</span>` : ""}</span>`;
+    },
+    logoBig() { return `<img class="logo-img lg logo-light" src="assets/logo.svg" alt="Classfolio" width="60" height="60" /><img class="logo-img lg logo-dark" src="assets/logo-dark.svg" alt="Classfolio" width="60" height="60" />`; },
+    avatar(url, name, size = 40, cls = "") {
+      const s = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.36)}px`;
+      return url ? `<img class="avatar-img ${cls}" src="${App.esc(url)}" alt="${App.esc(name || "")}" style="${s}" loading="lazy" referrerpolicy="no-referrer" />`
+        : `<span class="avatar ${cls}" style="${s}">${App.esc(App.initials(name || "?"))}</span>`;
+    },
 
     esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); },
     $(sel, root = document) { return root.querySelector(sel); },
     $$(sel, root = document) { return Array.from(root.querySelectorAll(sel)); },
 
+    // Title Case for short labels (small words stay lowercase; acronyms and IDs untouched)
+    titleCase(t) {
+      const small = new Set("a an the and or nor but of in on to for by with at from as per vs via".split(" "));
+      const w = String(t).split(" "), last = w.length - 1;
+      return w.map((x, i) => (/[A-Z0-9@#$]/.test(x.slice(1)) || !/^[a-z]/i.test(x) ? x : i && i !== last && small.has(x.toLowerCase()) ? x.toLowerCase() : x[0].toUpperCase() + x.slice(1))).join(" ");
+    },
     toast(msg, isErr = false) {
+      if (String(msg).split(" ").length <= 7 && !/[.!?]$/.test(String(msg).trim())) msg = App.titleCase(msg);
       let t = document.getElementById("toast");
       if (!t) { t = document.createElement("div"); t.id = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
       t.innerHTML = icon(isErr ? "alert" : "check") + `<span>${App.esc(msg)}</span>`; t.className = "show" + (isErr ? " err" : "");
@@ -143,7 +177,7 @@
       } catch { return null; }
     },
     studentLink() { return location.href.replace(/[^/]*([?#].*)?$/, ""); },   // the Student Portal (one link for every course)
-    async copy(text, msg = "Copied") { try { await navigator.clipboard.writeText(text); App.toast(msg); } catch { App.toast("Copy failed — select and copy manually", true); } },
+    async copy(text, msg = "Copied") { try { await navigator.clipboard.writeText(text); App.toast(msg); } catch { App.toast("Copy Failed — Select and Copy Manually", true); } },
 
     // Supabase returns at most 1000 rows per request; page through larger results
     async fetchAll(build) {

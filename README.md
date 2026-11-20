@@ -12,6 +12,21 @@
 
 ## Features
 
+**Faculty Accounts & Profiles**
+- **Sign In:**
+  - Email and password, with **Remember Me**: when it's off, you're signed out when the browser closes.
+  - Forgot Password and Change Password.
+- **Sign Up:**
+  - New faculty create their own account with their **full name, @aiub.edu email and password**.
+  - Other email domains are refused by the database itself, and each account only ever sees its own sections.
+- **My Profile:**
+  - Profile photo, cropped to a square and stored in Supabase Storage.
+  - Designation, department, faculty, contact email, room and consultation hours.
+  - Bio, research interests, education, selected publications.
+  - Links: AIUB Profile, website, Google Scholar, ResearchGate, ORCID, LinkedIn, GitHub, Facebook, X and YouTube.
+  - A live "How Students See You" preview.
+  - The phone number is private and never shown to students.
+
 **Faculty (`admin.html`)**
 - **Dashboard:** every section as a card, with live "attendance is open" banners and an intake filter.
 - **Intakes & Courses:** add, rename and delete intakes and courses.
@@ -88,6 +103,7 @@
 - **Controls:** +5 min, End, Full screen (`F`) and hide the side panel (`H`).
 
 **Student Portal (`index.html`)**
+- **Instructor Profile:** every course card shows the instructor's photo and name. Tap it to see their bio, research interests, education, publications and links. The portfolio also has a "Your Instructor" card.
 - **Find my courses:** type the Student ID to see every course and section the student is in, with their attendance %.
 - **Check in:** when any of their classes is open, a PIN box appears. The student types the PIN once, and it is checked against all their open classes.
 - **My Portfolio** (after you publish):

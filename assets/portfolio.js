@@ -214,10 +214,10 @@
         <div class="pf-ring" title="Grand total of all marks so far, out of 100">${App.ring(R.overall, 132, 12, "var(--primary)")}<div><b>${fmt(R.overall)}</b><span>${fin ? "out of 100" : "earned so far"}</span></div></div>
         <div class="pf-kpis">
           <div class="pf-kpi"><span class="k">${fin ? "Final Grade" : "Current Standing"}</span><span class="v"><span class="grade-pill ${gClass}">${esc(G.grade || "—")}</span>${fin || R.standing == null ? "" : ` <span style="font-size:16px;color:var(--muted);font-weight:650">${fmt(R.standing)}%</span>`}</span>
-            <span class="s">${G.special ? "Special grade" : fin ? (G.point != null ? `Grade Point ${(+G.point).toFixed(2)}` : "") : R.standing == null ? "No marks released yet" : `On the ${fmt(R.coverage, 0)}% of the course marked so far`}</span></div>
+            <span class="s">${G.special ? "Special Grade" : fin ? (G.point != null ? `Grade Point ${(+G.point).toFixed(2)}` : "") : R.standing == null ? "No Marks Released Yet" : `On the ${fmt(R.coverage, 0)}% of the course marked so far`}</span></div>
           <div class="pf-kpi"><span class="k">Attendance</span><span class="v ${pctCls(R.attPct, minAtt)}">${R.attPct == null ? "—" : R.attPct + "%"}</span><span class="s">Minimum ${minAtt}%</span></div>
           <div class="pf-kpi"><span class="k">Course Outcomes</span><span class="v">${R.coList.length ? `${R.coAttained}<small> / ${R.coList.length}</small>` : "—"}</span><span class="s">Attained (target ${R.coTarget}%)</span></div>
-          <div class="pf-kpi"><span class="k">Status</span><span class="v" style="font-size:16px">${R.complete ? `<span class="badge green">${icon("check")} All Marks In</span>` : `<span class="badge amber">${icon("clock")} In Progress</span>`}</span><span class="s">${R.complete ? "Final result" : "More marks to come"}</span></div>
+          <div class="pf-kpi"><span class="k">Status</span><span class="v" style="font-size:16px">${R.complete ? `<span class="badge green">${icon("check")} All Marks In</span>` : `<span class="badge amber">${icon("clock")} In Progress</span>`}</span><span class="s">${R.complete ? "Final Result" : "More Marks to Come"}</span></div>
         </div></div>
       ${R.attPct != null && R.attPct < minAtt ? `<div class="msg warn">${icon("alert")}<div>Your attendance is below the required ${minAtt}%. Please attend the remaining classes.</div></div>` : ""}`;
 
@@ -226,15 +226,15 @@
         const isAtt = row.kind === "attendance", avg = row.kids.length === 1 && !isAtt ? num(data.averages?.[row.kids[0].a.id]) : null;
         const avgSum = row.rule === "sum" && row.kids.length > 1 && row.kids.every((k) => data.averages?.[k.a.id] != null) ? row.kids.reduce((n, k) => n + +data.averages[k.a.id], 0) : null;
         const sAvg = avg ?? avgSum;
-        const scoreTxt = row.pending ? `<span class="faint">${isAtt ? "No classes yet" : "Not released"}</span>` : row.score == null ? `<span class="faint">—</span>` : `<b>${fmt(row.score, 2)}</b><span class="faint"> / ${fmt(row.scoreMax, 2)}</span>`;
+        const scoreTxt = row.pending ? `<span class="faint">${isAtt ? "No Classes Yet" : "Not Released"}</span>` : row.score == null ? `<span class="faint">—</span>` : `<b>${fmt(row.score, 2)}</b><span class="faint"> / ${fmt(row.scoreMax, 2)}</span>`;
         const sub = row.group && row.kids.length > 1 ? `<div class="pf-sub">${row.kids.map((k) => `<div class="${k.best ? "best" : ""}"><span>${esc(k.a.name)}${k.a.co ? ` <span class="co-tag">${esc(k.a.co)}</span>` : ""}${k.best ? ` <span class="badge green" style="padding:0 7px">Counted</span>` : ""}</span>
-            <span>${k.hidden ? `<span class="faint">Not released</span>` : k.score == null ? `<span class="faint">—</span>` : `${fmt(k.score, 2)}<span class="faint"> / ${fmt(k.a.max_marks, 2)}</span>`}</span></div>`).join("")}</div>` : "";
+            <span>${k.hidden ? `<span class="faint">Not Released</span>` : k.score == null ? `<span class="faint">—</span>` : `${fmt(k.score, 2)}<span class="faint"> / ${fmt(k.a.max_marks, 2)}</span>`}</span></div>`).join("")}</div>` : "";
         return `<div class="pf-row ${row.group && row.kids.length > 1 ? "has-sub" : ""}">
-          <div class="pf-name"><b>${esc(row.label)}</b>${row.co ? ` <span class="co-tag">${esc(row.co)}</span>` : ""}${row.rule === "best" ? ` <span class="faint xs">· best counted</span>` : row.rule === "sum_up" ? ` <span class="faint xs">· rounded up</span>` : ""}${isAtt && T.att.planned ? `<div class="xs faint">${T.att.attended} attended · ${T.att.held} of ${T.att.planned} classes held</div>` : ""}</div>
+          <div class="pf-name"><b>${esc(row.label)}</b>${row.co ? ` <span class="co-tag">${esc(row.co)}</span>` : ""}${row.rule === "best" ? ` <span class="faint xs">· Best Counted</span>` : row.rule === "sum_up" ? ` <span class="faint xs">· Rounded Up</span>` : ""}${isAtt && T.att.planned ? `<div class="xs faint">${T.att.attended} attended · ${T.att.held} of ${T.att.planned} classes held</div>` : ""}</div>
           <div class="pf-score">${scoreTxt}</div>
           ${(() => { const bar = isAtt ? (T.att.held ? T.att.attended / T.att.held : null) : row.ratio; return `<div class="pf-contrib"><div class="progress ${bar != null && bar < (isAtt ? minAtt / 100 : 0.5) ? "bad" : bar != null && bar < 0.7 ? "warn" : ""}"><span style="width:${(bar || 0) * 100}%"></span></div>`; })()}
             <span><b>${row.pending ? "—" : fmt(row.contrib, 2)}</b><span class="faint"> / ${fmt(row.weight, 2)}</span></span></div>
-          <div class="pf-avg">${sAvg != null ? `${fmt(sAvg, 1)}<span class="faint"> avg</span>` : ""}</div>${sub}</div>`;
+          <div class="pf-avg">${sAvg != null ? `${fmt(sAvg, 1)}<span class="faint"> Avg</span>` : ""}</div>${sub}</div>`;
       }).join("");
       const tg = T.grade || {};
       return `<div class="card pf-term"><div class="card-head"><div><h2>${esc(T.term.name)}</h2><div class="sub">${Math.round(T.weightShare * 100)}% of the course total${T.attPct != null ? ` · Attendance ${T.attPct}%` : ""}</div></div>
@@ -244,13 +244,13 @@
 
     const cos = R.coList.length ? `<div class="card"><div class="card-head"><div><h2>Course Outcomes</h2><div class="sub">A CO is attained at ${R.coTarget}% or more of its marks</div></div></div>
       <div class="co-grid">${R.coList.map((c) => `<div class="co-card ${c.pct == null ? "" : c.attained ? "ok" : "no"}"><div class="row center-y" style="gap:10px"><span class="co-code">${esc(c.code)}</span>
-          <span class="grow"></span>${c.pct == null ? `<span class="badge">Not assessed yet</span>` : c.attained ? `<span class="badge green">${icon("check")} Attained</span>` : `<span class="badge red">Not attained</span>`}</div>
+          <span class="grow"></span>${c.pct == null ? `<span class="badge">Not Assessed Yet</span>` : c.attained ? `<span class="badge green">${icon("check")} Attained</span>` : `<span class="badge red">Not Attained</span>`}</div>
         <p class="small" style="margin:10px 0 12px;color:var(--text-2)">${esc(c.statement) || `<span class="faint">—</span>`}</p>
         <div class="co-bar"><span style="width:${c.pct || 0}%"></span><i style="left:${R.coTarget}%"></i></div>
         <div class="row center-y xs muted" style="margin-top:6px;justify-content:space-between"><span>${c.pct == null ? "" : `${fmt(c.got, 2)} / ${fmt(c.max, 2)} marks`}</span><b class="${c.pct == null ? "" : c.attained ? "pct-good" : "pct-bad"}">${c.pct == null ? "" : c.pct + "%"}</b></div>
         ${c.po || c.level ? `<div class="xs faint" style="margin-top:4px">${esc([c.po, c.level].filter(Boolean).join(" · "))}</div>` : ""}</div>`).join("")}</div></div>` : "";
 
-    const attn = `<div class="card"><div class="card-head"><div><h2>Attendance</h2><div class="sub">Each box is one class</div></div>
+    const attn = `<div class="card"><div class="card-head"><div><h2>Attendance</h2><div class="sub">Each Box Is One Class</div></div>
         <div class="legend"><span><span class="mk P">P</span>Present</span><span><span class="mk L">L</span>Late</span><span><span class="mk E">E</span>Excused</span><span><span class="mk A">A</span>Absent</span><span><span class="mk N"></span>Not Held</span></div></div>
       ${data.terms.map((t) => { const cl = data.classes.filter((c) => c.term_id === t.id), a = attBy[t.id] || { held: 0, attended: 0 }, p = a.held ? Math.round((a.attended / a.held) * 100) : null;
         return `<div class="pf-att"><div class="row center-y" style="justify-content:space-between;margin-bottom:10px"><b>${esc(t.name)}</b><span class="small muted">${a.attended} / ${a.held} · <b class="${pctCls(p, minAtt)}">${p == null ? "—" : p + "%"}</b></span></div>
@@ -260,13 +260,40 @@
       <div class="pf-members">${(data.group.members || []).map((m) => `<span class="chip ${m === data.student.student_id ? "me" : ""}">${icon("user")} ${esc(m)}${m === data.student.student_id ? " (you)" : ""}</span>`).join("")}</div></div>` : "";
 
     const scale = [...(sec.grade_scale || AIUB_SCALE)].sort((a, b) => b.min - a.min);
-    const gs = `<div class="card"><div class="card-head"><div><h2>Grading Scale</h2><div class="sub">${sec.round_total ? "Totals are rounded to the nearest whole number before grading" : "Totals are graded as they are"}</div></div></div>
+    const gs = `<div class="card"><div class="card-head"><div><h2>Grading Scale</h2><div class="sub">${sec.round_total ? "Totals Rounded to the Nearest Whole Number Before Grading" : "Graded on the Exact Total (85 – <90 Is A)"}</div></div></div>
       <div class="gs-grid">${scale.map((g, i) => `<div class="gs ${G.grade === g.grade ? "on" : ""}"><b>${esc(g.grade)}</b><span>${i === 0 ? `${g.min}–100` : g.min === 0 ? `< ${scale[i - 1].min}` : `${g.min} – <${scale[i - 1].min}`}</span><span class="faint">${(+g.point).toFixed(2)}</span></div>`).join("")}</div></div>`;
 
     return `<div class="pf">${head}
       ${anyMarks ? `<div class="stack">${terms}</div>` : `<div class="card"><div class="empty"><div class="ic">${icon("book")}</div><h3>No marks yet</h3><p>${opts.faculty ? "Set up the assessment plan in the Marks tab." : "Your instructor has not added any assessments yet."}</p></div></div>`}
-      <div class="grid cols-2" style="align-items:start">${cos ? `<div class="stack">${cos}</div>` : ""}<div class="stack">${attn}${grp}${gs}</div></div></div>`;
+      <div class="grid cols-2" style="align-items:start">${cos ? `<div class="stack">${cos}</div>` : ""}<div class="stack">${data.faculty ? `<div class="card"><div class="card-head" style="margin-bottom:16px"><div><h2>Your Instructor</h2></div></div>${facultyCard(data.faculty, { compact: true })}</div>` : ""}${attn}${grp}${gs}</div></div></div>`;
   }
 
-  window.Grade = { AIUB_SCALE, PRESETS, student, gradeFor, termRows, rowWeight, render, fmt, num, r2, RULES };
+  // ------------------------------------------------------------------ instructor profile card (portal + faculty preview)
+  const LINK_LABELS = { aiub: "AIUB Profile", website: "Website", scholar: "Google Scholar", researchgate: "ResearchGate", orcid: "ORCID", linkedin: "LinkedIn",
+    github: "GitHub", facebook: "Facebook", x: "X (Twitter)", youtube: "YouTube" };
+  const okUrl = (u) => (/^https?:\/\/[^\s"'<>]+$/i.test(String(u || "")) ? String(u) : "");
+  function facultyCard(f, opts = {}) {
+    if (!f) return "";
+    const links = { ...(f.links || {}) }; if (f.aiub_profile_url && !links.aiub) links.aiub = f.aiub_profile_url;
+    const linkBtns = Object.entries(LINK_LABELS).filter(([k]) => okUrl(links[k])).map(([k, l]) => `<a class="btn sm secondary" href="${esc(okUrl(links[k]))}" target="_blank" rel="noopener noreferrer nofollow">${icon(k === "aiub" ? "graduation" : "globe")} ${l}</a>`).join("");
+    const email = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(f.email || "") ? f.email : "";
+    const edu = (f.education || []).filter((e) => e.degree || e.institution), pubs = (f.publications || []).filter((p) => p.title);
+    const empty = !f.bio && !(f.research_interests || []).length && !linkBtns && !edu.length;
+    return `<div class="fac">
+      <div class="fac-head">${App.avatar(f.photo_url, f.name, opts.compact ? 64 : 88, "xl")}
+        <div style="min-width:0"><h3 class="fac-name">${esc(f.name || "Instructor")}</h3>
+          ${f.designation ? `<div class="fac-desig">${esc(f.designation)}</div>` : ""}
+          ${f.department || f.faculty_name ? `<div class="small muted">${esc([f.department, f.faculty_name].filter(Boolean).join(" · "))}</div>` : ""}</div></div>
+      ${email || f.room || f.consultation ? `<div class="fac-contact">
+        ${email ? `<a href="mailto:${esc(email)}">${icon("mail")} ${esc(email)}</a>` : ""}${f.room ? `<span>${icon("pin")} ${esc(f.room)}</span>` : ""}
+        ${f.consultation ? `<span>${icon("clock")} Consultation: ${esc(f.consultation)}</span>` : ""}</div>` : ""}
+      ${f.bio ? `<div class="fac-sec"><div class="section-title">About</div><p class="fac-bio">${esc(f.bio)}</p></div>` : ""}
+      ${(f.research_interests || []).length ? `<div class="fac-sec"><div class="section-title">Research Interests</div><div class="tags static">${f.research_interests.map((t) => `<span class="tag">${icon("sparkles")} ${esc(t)}</span>`).join("")}</div></div>` : ""}
+      ${!opts.compact && edu.length ? `<div class="fac-sec"><div class="section-title">Education</div><ul class="fac-list">${edu.map((e) => `<li>${icon("graduation")}<div><b>${esc(e.degree)}</b><div class="small muted">${esc([e.institution, e.year].filter(Boolean).join(" · "))}</div></div></li>`).join("")}</ul></div>` : ""}
+      ${!opts.compact && pubs.length ? `<div class="fac-sec"><div class="section-title">Selected Publications</div><ul class="fac-list">${pubs.map((p) => `<li>${icon("file")}<div>${okUrl(p.url) ? `<a href="${esc(okUrl(p.url))}" target="_blank" rel="noopener noreferrer nofollow"><b>${esc(p.title)}</b></a>` : `<b>${esc(p.title)}</b>`}<div class="small muted">${esc([p.venue, p.year].filter(Boolean).join(" · "))}</div></div></li>`).join("")}</ul></div>` : ""}
+      ${linkBtns ? `<div class="fac-sec"><div class="section-title">Links</div><div class="btn-group">${linkBtns}</div></div>` : ""}
+      ${empty ? `<p class="small faint" style="margin:14px 0 0">More details coming soon.</p>` : ""}</div>`;
+  }
+
+  window.Grade = { AIUB_SCALE, PRESETS, student, gradeFor, termRows, rowWeight, render, facultyCard, fmt, num, r2, RULES };
 })();

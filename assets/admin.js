@@ -26,25 +26,35 @@
     excused: { k: "E", label: "Excused", cls: "violet" },
   };
 
+  let PROFILE = null;
+  async function loadProfile() {
+    if (!user) return (PROFILE = null);
+    const { data } = await sb.from("faculty_profiles").select("*").eq("id", user.id).maybeSingle();
+    PROFILE = data || { id: user.id, full_name: user.user_metadata?.full_name || "", email: user.email, research_interests: [], education: [], publications: [], links: {} };
+    return PROFILE;
+  }
+  const myName = () => (PROFILE?.full_name || user?.user_metadata?.full_name || "").trim();
+
   function topbar() {
-    const name = user?.email || "";
+    const name = myName() || user?.email || "";
     return `<header class="topbar">
-      <a class="brand" href="#/"><div class="logo">${icon("logo")}</div><div><div class="t1">Classfolio</div><div class="t2">${esc(cfg.INSTITUTION || "")}</div></div></a>
+      <a class="brand" href="#/">${App.brand(cfg.INSTITUTION || "")}</a>
       <div class="spacer"></div>
       <a class="btn ghost sm" href="#/setup" title="Intakes & Courses">${icon("layers")}<span class="hide-sm">Intakes & Courses</span></a>
       ${App.theme.button()}
-      <div class="menu-wrap"><button class="avatar" id="me" title="${esc(name)}" aria-haspopup="menu">${esc(App.initials(name.split("@")[0]))}</button></div>
+      <div class="menu-wrap"><button class="avatar-btn" id="me" title="${esc(name)}" aria-haspopup="menu">${App.avatar(PROFILE?.photo_url, name, 40)}</button></div>
     </header>`;
   }
   function bindTop() {
     const me = $("#me"); if (!me) return;
     me.onclick = (e) => {
       e.stopPropagation(); const w = me.parentElement, open = w.querySelector(".menu"); if (open) return open.remove();
-      w.insertAdjacentHTML("beforeend", `<div class="menu" role="menu"><div class="who"><span class="muted xs">Signed in as</span><b>${esc(user.email)}</b></div>
-        <a href="#/">${icon("grid")} All Sections</a><a href="#/setup">${icon("layers")} Intakes & Courses</a>
+      w.insertAdjacentHTML("beforeend", `<div class="menu" role="menu"><div class="who" style="display:flex;gap:12px;align-items:center">${App.avatar(PROFILE?.photo_url, myName() || user.email, 42)}
+          <div style="min-width:0"><b style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(myName() || "Your Name")}</b><span class="muted xs" style="display:block;overflow:hidden;text-overflow:ellipsis">${esc(user.email)}</span></div></div>
+        <a href="#/profile">${icon("user")} My Profile</a><a href="#/">${icon("grid")} All Sections</a><a href="#/setup">${icon("layers")} Intakes & Courses</a>
         <button data-m="pw">${icon("key")} Change Password</button><div class="sep"></div><button data-m="out" class="danger">${icon("logout")} Sign Out</button></div>`);
       const m = w.querySelector(".menu");
-      m.onclick = async (ev) => { const b = ev.target.closest("[data-m]"); m.remove(); if (!b) return; if (b.dataset.m === "out") { await sb.auth.signOut(); location.hash = ""; } else changePassword(); };
+      m.onclick = async (ev) => { const b = ev.target.closest("[data-m]"); m.remove(); if (!b) return; if (b.dataset.m === "out") { await sb.auth.signOut(); PROFILE = null; location.hash = ""; } else changePassword(); };
       setTimeout(() => document.addEventListener("click", function h() { m.remove(); document.removeEventListener("click", h); }), 0);
     };
   }
@@ -54,12 +64,20 @@
     const dlg = await App.dialog({ title, ic: "key", okText: "Save Password", html: true,
       body: `<label>New Password</label><input id="np1" type="password" autocomplete="new-password" minlength="8" />
         <div class="field-gap"></div><label>Repeat New Password</label><input id="np2" type="password" autocomplete="new-password" />
-        <p class="hint">At least 8 characters.</p>`,
-      validate: (m) => { const a = m.querySelector("#np1").value, b = m.querySelector("#np2").value; if (a.length < 8) return "Use at least 8 characters."; if (a !== b) return "The two passwords do not match."; } });
+        <p class="hint">At least 8 characters, with letters and numbers.</p>`,
+      validate: (m) => pwProblem(m.querySelector("#np1").value, m.querySelector("#np2").value) });
     if (!dlg) return;
     const { error } = await sb.auth.updateUser({ password: dlg.querySelector("#np1").value });
-    error ? fail(error) : App.toast("Password updated");
+    error ? fail(error) : App.toast("Password Updated");
   }
+  function pwProblem(a, b) {
+    if (a.length < 8) return "Use at least 8 characters.";
+    if (!/[A-Za-z]/.test(a) || !/\d/.test(a)) return "Use both letters and numbers.";
+    if (b != null && a !== b) return "The two passwords do not match.";
+    return null;
+  }
+  function pwScore(p) { let s = 0; if (p.length >= 8) s++; if (p.length >= 12) s++; if (/[a-z]/.test(p) && /[A-Z]/.test(p)) s++; if (/\d/.test(p)) s++; if (/[^\w]/.test(p)) s++; return Math.min(4, s); }
+  const isAiub = (e) => new RegExp(`@${(cfg.FACULTY_EMAIL_DOMAIN || "aiub.edu").replace(/\./g, "\\.")}$`, "i").test(e.trim());
 
   // popover menu anchored to an element
   let popEl = null;
@@ -75,31 +93,212 @@
   }
   addEventListener("scroll", closePop, true); addEventListener("resize", closePop);
 
-  // ------------------------------------------------------------------ login
+  // ------------------------------------------------------------------ sign in / sign up
+  function authShell(inner) {
+    root.innerHTML = `<div class="corner">${App.theme.button()}</div><div class="auth">
+      <aside class="auth-hero"><div class="auth-hero-in">
+        <a class="brand brand-light" href="index.html">${App.brand(cfg.INSTITUTION || "")}</a>
+        <div><h2>Attendance, Marks and Portfolios — in One Place.</h2>
+          <ul class="auth-points"><li>${icon("smartphone")} Rotating-PIN Attendance in Seconds</li><li>${icon("book")} Gradebook That Matches Your Course Outline</li>
+            <li>${icon("target")} Results, Grades and CO Attainment</li><li>${icon("user")} A Portfolio Every Student Can Open</li></ul></div>
+        <p class="xs" style="opacity:.75;margin:0">© 2026 Wahidul Alam Riyad · Classfolio</p></div></aside>
+      <section class="auth-main"><div class="login">${inner}</div></section></div>`;
+  }
   function renderLogin(msg = "", email = "") {
-    root.innerHTML = `<div class="corner">${App.theme.button()}</div><div class="center-wrap" style="min-height:100vh"><div class="login">
-      <div class="card"><div class="logo-lg">${icon("logo")}</div>
-      <h1>Welcome to Classfolio</h1><p class="muted" style="margin:6px 0 26px">Sign in to manage your sections, marks and attendance${cfg.INSTITUTION ? ` · ${esc(cfg.INSTITUTION)}` : ""}</p>
-      <form id="lf"><label for="em">Email</label><input id="em" type="email" autocomplete="username" value="${esc(email)}" required />
+    authShell(`<div class="card">${App.logoBig()}
+      <h1>Welcome Back</h1><p class="muted" style="margin:6px 0 26px">Use your faculty account to continue.</p>
+      <form id="lf" novalidate><label for="em">Email</label><input id="em" type="email" autocomplete="username" value="${esc(email)}" placeholder="name@aiub.edu" required />
       <div class="field-gap"></div><label for="pw">Password</label>
       <div class="search"><input id="pw" type="password" autocomplete="current-password" required style="padding-left:13px;padding-right:44px" />
         <button type="button" class="icon-btn" id="peek" style="position:absolute;right:4px;top:4px" aria-label="Show password">${icon("eye")}</button></div>
-      <div style="height:22px"></div><button class="btn lg block" id="lb">Sign In</button>
-      ${msg ? `<div class="msg err">${icon("alert")}<div>${esc(msg)}</div></div>` : ""}
-      <div class="center" style="margin-top:18px"><a href="#" id="forgot" class="small">Forgot Password?</a></div></form></div>
-      <p class="muted small center" style="margin-top:18px">Faculty accounts are created in Supabase ▸ Authentication ▸ Users.</p></div></div>`;
+      <div class="row center-y" style="justify-content:space-between;margin:16px 0 22px">
+        <label class="check-label"><input type="checkbox" id="rem" ${App.remember.get() ? "checked" : ""} /> Remember Me</label>
+        <a href="#" id="forgot" class="small">Forgot Password?</a></div>
+      <button class="btn lg block" id="lb">${icon("lock")} Sign In</button>
+      ${msg ? `<div class="msg err">${icon("alert")}<div>${esc(msg)}</div></div>` : ""}</form></div>
+      <p class="center small" style="margin-top:20px">New Faculty Member? <a href="#/signup"><b>Create an Account</b></a></p>
+      <p class="center xs faint" style="margin-top:6px">Students: <a href="index.html">Open the Student Portal</a></p>`);
     $("#peek").onclick = () => { const p = $("#pw"); p.type = p.type === "password" ? "text" : "password"; $("#peek").innerHTML = icon(p.type === "password" ? "eye" : "eyeoff"); };
     $("#lf").onsubmit = async (e) => {
-      e.preventDefault(); const b = $("#lb"); b.disabled = true; b.innerHTML = `<span class="spinner" style="width:18px;height:18px"></span> Signing In…`;
-      const { error } = await sb.auth.signInWithPassword({ email: $("#em").value.trim(), password: $("#pw").value });
-      if (error) { renderLogin(error.message === "Invalid login credentials" ? "Wrong email or password." : error.message, $("#em").value.trim()); $("#pw").focus(); }
+      e.preventDefault(); const em = $("#em").value.trim(), pw = $("#pw").value;
+      if (!em || !pw) return renderLogin("Enter your email and password.", em);
+      App.remember.set($("#rem").checked);
+      const b = $("#lb"); b.disabled = true; b.innerHTML = `<span class="spinner" style="width:18px;height:18px"></span> Signing In…`;
+      const { error } = await sb.auth.signInWithPassword({ email: em, password: pw });
+      if (error) { renderLogin(/invalid login/i.test(error.message) ? "Wrong email or password." : /not confirmed/i.test(error.message) ? "Please confirm your email first — check your AIUB inbox for the link." : error.message, em); $("#pw").focus(); }
     };
     $("#forgot").onclick = async (e) => {
-      e.preventDefault(); const em = $("#em").value.trim(); if (!em) { App.toast("Type your email first", true); return $("#em").focus(); }
+      e.preventDefault(); const em = $("#em").value.trim(); if (!em) { App.toast("Type Your Email First", true); return $("#em").focus(); }
       const { error } = await sb.auth.resetPasswordForEmail(em, { redirectTo: location.href.split("#")[0] });
-      error ? fail(error) : App.toast("Password reset email sent — check your inbox");
+      error ? fail(error) : App.toast("Password Reset Email Sent — Check Your Inbox");
     };
     (email ? $("#pw") : $("#em")).focus();
+  }
+  function renderSignup(msg = "", v = {}) {
+    const dom = cfg.FACULTY_EMAIL_DOMAIN || "aiub.edu";
+    authShell(`<div class="card">${App.logoBig()}
+      <h1>Create Your Faculty Account</h1><p class="muted" style="margin:6px 0 24px">Use your official <b>@${esc(dom)}</b> email address.</p>
+      <form id="sf" novalidate>
+        <label for="fn">Full Name</label><input id="fn" autocomplete="name" maxlength="120" value="${esc(v.fn || "")}" placeholder="e.g. Wahidul Alam Riyad" />
+        <div class="field-gap"></div><label for="se">AIUB Email</label><input id="se" type="email" autocomplete="username" value="${esc(v.se || "")}" placeholder="name@${esc(dom)}" />
+        <div class="field-gap"></div><label for="sp">Password</label>
+        <div class="search"><input id="sp" type="password" autocomplete="new-password" style="padding-left:13px;padding-right:44px" />
+          <button type="button" class="icon-btn" id="peek2" style="position:absolute;right:4px;top:4px" aria-label="Show password">${icon("eye")}</button></div>
+        <div class="pw-meter" id="pwm"><span></span><span></span><span></span><span></span></div><p class="hint" id="pwh" style="margin-top:6px">At least 8 characters, with letters and numbers.</p>
+        <div class="field-gap"></div><label for="sp2">Confirm Password</label><input id="sp2" type="password" autocomplete="new-password" />
+        <div style="height:22px"></div><button class="btn lg block" id="sb">${icon("user")} Create Account</button>
+        ${msg ? `<div class="msg err">${icon("alert")}<div>${esc(msg)}</div></div>` : ""}</form></div>
+      <p class="center small" style="margin-top:20px">Already Have an Account? <a href="#/"><b>Sign In</b></a></p>`);
+    const pw = $("#sp"), meter = $$("#pwm span"), labels = ["Too Short", "Weak", "Fair", "Good", "Strong"];
+    pw.oninput = () => { const s = pw.value ? pwScore(pw.value) : -1; meter.forEach((m, i) => (m.className = i <= s - 1 || (s === 0 && i === 0 && pw.value) ? `on s${s}` : "")); $("#pwh").textContent = pw.value ? `Strength: ${labels[Math.max(0, s)]}` : "At least 8 characters, with letters and numbers."; };
+    $("#peek2").onclick = () => { pw.type = pw.type === "password" ? "text" : "password"; $("#sp2").type = pw.type; $("#peek2").innerHTML = icon(pw.type === "password" ? "eye" : "eyeoff"); };
+    $("#sf").onsubmit = async (e) => {
+      e.preventDefault();
+      const fn = App.nameCase($("#fn").value.replace(/\s+/g, " ").trim()), se = $("#se").value.trim().toLowerCase(), p1 = pw.value, p2 = $("#sp2").value, keep = { fn: $("#fn").value, se };
+      if (fn.length < 3) return renderSignup("Enter your full name.", keep);
+      if (!isAiub(se)) return renderSignup(`Use your official @${dom} email address.`, keep);
+      const bad = pwProblem(p1, p2); if (bad) return renderSignup(bad, keep);
+      const b = $("#sb"); b.disabled = true; b.innerHTML = `<span class="spinner" style="width:18px;height:18px"></span> Creating Account…`;
+      const { data, error } = await sb.auth.signUp({ email: se, password: p1, options: { data: { full_name: fn }, emailRedirectTo: location.href.split("#")[0] } });
+      if (error) return renderSignup(/database error|check_violation|aiub/i.test(error.message) ? `Use your official @${dom} email address.` : /registered|exists/i.test(error.message) ? "An account with this email already exists. Sign in instead." : /signups? not allowed|disabled/i.test(error.message) ? "New sign-ups are turned off. Ask the administrator to allow sign-ups in Supabase." : error.message, keep);
+      if (data.session) { App.toast("Welcome to Classfolio!"); location.hash = "#/profile"; return; }
+      authShell(`<div class="card center"><div style="display:flex;justify-content:center">${App.logoBig()}</div>
+        <h1>Check Your Email</h1><p class="muted" style="margin:10px 0 22px">We sent a confirmation link to <b>${esc(se)}</b>. Open it to activate your account, then sign in.</p>
+        <a class="btn lg block" href="#/">${icon("lock")} Go to Sign In</a></div>`);
+    };
+    $("#fn").focus();
+  }
+
+  // ------------------------------------------------------------------ my profile
+  const LINKS = [["aiub", "AIUB Profile", "https://aiub.edu/faculty-list/faculty-profile?q=…"], ["website", "Personal Website", "https://"], ["scholar", "Google Scholar", "https://scholar.google.com/citations?user=…"],
+    ["researchgate", "ResearchGate", "https://www.researchgate.net/profile/…"], ["orcid", "ORCID", "https://orcid.org/0000-…"], ["linkedin", "LinkedIn", "https://www.linkedin.com/in/…"],
+    ["github", "GitHub", "https://github.com/…"], ["facebook", "Facebook", "https://facebook.com/…"], ["x", "X (Twitter)", "https://x.com/…"], ["youtube", "YouTube", "https://youtube.com/@…"]];
+  const DESIGNATIONS = ["Lecturer", "Senior Lecturer", "Assistant Professor", "Associate Professor", "Professor", "Adjunct Faculty", "Visiting Faculty", "Teaching Assistant"];
+  const safeUrl = (u) => { u = String(u || "").trim(); if (!u) return ""; if (!/^https?:\/\//i.test(u)) u = "https://" + u; try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ""; } catch { return ""; } };
+
+  async function renderProfile() {
+    page(loading()); await loadProfile();
+    const P = JSON.parse(JSON.stringify(PROFILE)); P.research_interests ||= []; P.education ||= []; P.publications ||= []; P.links ||= {};
+    if (P.aiub_profile_url && !P.links.aiub) P.links.aiub = P.aiub_profile_url;
+    if (!P.email) P.email = user.email;
+    const draw = () => {
+      page(`<div class="crumbs"><a href="#/">${icon("back")} All Sections</a></div>
+      <div class="page-head"><div><h1>My Profile</h1><p class="muted" style="margin:6px 0 0">Students see your photo, name, research interests, bio and links in the Student Portal.</p></div>
+        <div class="actions"><button class="btn" id="psave">${icon("check")} Save Profile</button></div></div>
+      <div class="grid side">
+        <div class="stack">
+          <div class="card"><div class="card-head"><div><h2>Profile Photo</h2><div class="sub">A clear, front-facing photo. JPG, PNG or WebP, up to 2 MB.</div></div></div>
+            <div class="row center-y" style="gap:22px">${App.avatar(P.photo_url, P.full_name, 112, "xl")}
+              <div class="stack-sm"><div class="btn-group"><button class="btn secondary" id="pup">${icon("camera")} ${P.photo_url ? "Change Photo" : "Upload Photo"}</button>
+                ${P.photo_url ? `<button class="btn ghost" id="pdel">${icon("trash")} Remove</button>` : ""}</div>
+                <span class="hint" style="margin:0">It is cropped to a square automatically.</span></div></div>
+            <input type="file" id="pfile" accept="image/jpeg,image/png,image/webp" class="hidden" /></div>
+          <div class="card"><div class="card-head"><div><h2>Basic Information</h2></div></div>
+            <div class="grid cols-2">
+              <div><label>Full Name</label><input data-k="full_name" maxlength="120" value="${esc(P.full_name || "")}" /></div>
+              <div><label>Designation</label><input data-k="designation" list="desig" maxlength="80" value="${esc(P.designation || "")}" placeholder="e.g. Lecturer" /></div>
+              <div><label>Department</label><input data-k="department" list="depts" maxlength="120" value="${esc(P.department || "")}" placeholder="e.g. Department of Computer Science" /></div>
+              <div><label>Faculty</label><input data-k="faculty_name" list="facs" maxlength="120" value="${esc(P.faculty_name || "")}" placeholder="e.g. Faculty of Science and Technology" /></div>
+              <div><label>Contact Email <span class="faint">(Shown to Students)</span></label><input data-k="email" type="email" maxlength="160" value="${esc(P.email || "")}" /></div>
+              <div><label>Room</label><input data-k="room" maxlength="80" value="${esc(P.room || "")}" placeholder="e.g. Room D0412, Annex 4" /></div>
+              <div><label>Consultation Hours</label><input data-k="consultation" maxlength="300" value="${esc(P.consultation || "")}" placeholder="e.g. Sun & Tue, 11:00 AM – 1:00 PM" /></div>
+              <div><label>Phone <span class="faint">(Private — Never Shown to Students)</span></label><input data-k="phone" maxlength="40" value="${esc(P.phone || "")}" /></div></div>
+            <datalist id="desig">${DESIGNATIONS.map((d) => `<option value="${d}">`).join("")}</datalist>
+            <datalist id="depts"><option value="Department of Computer Science"><option value="Department of Computer Engineering"><option value="Department of Software Engineering"><option value="Department of Information Technology"><option value="Department of Data Science"></datalist>
+            <datalist id="facs"><option value="Faculty of Science and Technology"><option value="Faculty of Engineering"><option value="Faculty of Business Administration"><option value="Faculty of Arts and Social Sciences"></datalist></div>
+          <div class="card"><div class="card-head"><div><h2>About</h2></div></div>
+            <label>Bio</label><textarea data-k="bio" maxlength="3000" style="min-height:140px" placeholder="A short introduction — your teaching, background and what students can expect.">${esc(P.bio || "")}</textarea>
+            <div class="hint" style="text-align:right" id="biocount">${(P.bio || "").length} / 3000</div>
+            <div class="field-gap"></div><label>Research Interests</label>
+            <div class="tags" id="tags">${P.research_interests.map((t, i) => `<span class="tag">${esc(t)}<button type="button" data-tdel="${i}" aria-label="Remove">${icon("x")}</button></span>`).join("")}
+              <input id="tagin" placeholder="${P.research_interests.length ? "Add Another…" : "Type an Interest and Press Enter"}" maxlength="60" /></div>
+            <p class="hint">Press Enter or comma after each one, e.g. Web Security, Human-Computer Interaction.</p></div>
+          <div class="card"><div class="card-head"><div><h2>Education</h2></div><button class="btn sm secondary" id="eadd">${icon("plus")} Add Degree</button></div>
+            <div class="stack-sm">${P.education.map((e, i) => `<div class="rowcard" data-ei="${i}"><input data-e="degree" value="${esc(e.degree || "")}" placeholder="Degree, e.g. MSc in Computer Science" />
+              <input data-e="institution" value="${esc(e.institution || "")}" placeholder="Institution" /><input data-e="year" value="${esc(e.year || "")}" placeholder="Year" style="max-width:96px" />
+              <button class="icon-btn danger" data-edel="${i}">${icon("trash")}</button></div>`).join("") || `<p class="muted small" style="margin:0">No degrees added yet.</p>`}</div></div>
+          <div class="card"><div class="card-head"><div><h2>Selected Publications</h2><div class="sub">Optional — Up to 20</div></div><button class="btn sm secondary" id="padd">${icon("plus")} Add Publication</button></div>
+            <div class="stack-sm">${P.publications.map((e, i) => `<div class="rowcard" data-pi="${i}"><input data-p="title" value="${esc(e.title || "")}" placeholder="Title" style="flex:2" />
+              <input data-p="venue" value="${esc(e.venue || "")}" placeholder="Journal / Conference" /><input data-p="year" value="${esc(e.year || "")}" placeholder="Year" style="max-width:86px" />
+              <input data-p="url" value="${esc(e.url || "")}" placeholder="Link (https://…)" /><button class="icon-btn danger" data-pdel="${i}">${icon("trash")}</button></div>`).join("") || `<p class="muted small" style="margin:0">No publications added yet.</p>`}</div></div>
+          <div class="card"><div class="card-head"><div><h2>Links</h2><div class="sub">Shown to Students as Buttons</div></div></div>
+            <div class="grid cols-2">${LINKS.map(([k, l, ph]) => `<div><label>${l}</label><input data-l="${k}" value="${esc(P.links[k] || "")}" placeholder="${esc(ph)}" inputmode="url" /></div>`).join("")}</div></div>
+        </div>
+        <div class="stack sticky-col"><div class="card"><div class="card-head" style="margin-bottom:14px"><div><h2>How Students See You</h2><div class="sub">Live Preview</div></div></div><div id="pprev"></div></div></div>
+      </div>
+      <div class="savebar"><span class="muted small" id="pdirty">All changes saved</span><button class="btn" id="psave2">${icon("check")} Save Profile</button></div>`);
+      bind();
+    };
+    let dirty = false;
+    const mark = () => { dirty = true; const d = $("#pdirty"); if (d) d.innerHTML = `${icon("alert")} Unsaved changes`; preview(); };
+    const collect = () => {
+      $$("[data-k]").forEach((el) => (P[el.dataset.k] = el.value.trim()));
+      $$("[data-l]").forEach((el) => (P.links[el.dataset.l] = el.value.trim()));
+      P.education = $$("[data-ei]").map((r) => ({ degree: r.querySelector("[data-e=degree]").value.trim(), institution: r.querySelector("[data-e=institution]").value.trim(), year: r.querySelector("[data-e=year]").value.trim() }));
+      P.publications = $$("[data-pi]").map((r) => ({ title: r.querySelector("[data-p=title]").value.trim(), venue: r.querySelector("[data-p=venue]").value.trim(), year: r.querySelector("[data-p=year]").value.trim(), url: r.querySelector("[data-p=url]").value.trim() }));
+    };
+    const preview = () => { collect(); const el = $("#pprev"); if (el) el.innerHTML = Grade.facultyCard(publicView(P), { compact: false }); };
+    const bind = () => {
+      $$("[data-k],[data-l],[data-e],[data-p]").forEach((el) => el.addEventListener("input", mark));
+      $("[data-k=bio]").addEventListener("input", (e) => ($("#biocount").textContent = `${e.target.value.length} / 3000`));
+      const tin = $("#tagin");
+      tin.addEventListener("keydown", (e) => {
+        if ((e.key === "Enter" || e.key === ",") && tin.value.trim()) { e.preventDefault(); collect(); const v = App.nameCase(tin.value.replace(/,/g, "").trim()); if (P.research_interests.length < 15 && !P.research_interests.includes(v)) P.research_interests.push(v); dirty = true; draw(); $("#tagin").focus(); }
+        if (e.key === "Backspace" && !tin.value && P.research_interests.length) { collect(); P.research_interests.pop(); dirty = true; draw(); $("#tagin").focus(); }
+      });
+      $$("[data-tdel]").forEach((b) => (b.onclick = () => { collect(); P.research_interests.splice(+b.dataset.tdel, 1); dirty = true; draw(); }));
+      $("#eadd").onclick = () => { collect(); P.education.push({ degree: "", institution: "", year: "" }); dirty = true; draw(); };
+      $$("[data-edel]").forEach((b) => (b.onclick = () => { collect(); P.education.splice(+b.dataset.edel, 1); dirty = true; draw(); }));
+      $("#padd").onclick = () => { collect(); if (P.publications.length >= 20) return App.toast("Up to 20 Publications", true); P.publications.push({ title: "", venue: "", year: "", url: "" }); dirty = true; draw(); };
+      $$("[data-pdel]").forEach((b) => (b.onclick = () => { collect(); P.publications.splice(+b.dataset.pdel, 1); dirty = true; draw(); }));
+      $("#pup").onclick = () => $("#pfile").click();
+      $("#pfile").onchange = (e) => e.target.files[0] && uploadPhoto(e.target.files[0]);
+      const pd = $("#pdel"); if (pd) pd.onclick = async () => { if (!(await App.confirm("Remove your photo?", "Students will see your initials instead.", "Remove"))) return; collect(); await removePhoto(P.photo_url); P.photo_url = null; await save(true); };
+      $("#psave").onclick = () => save(); $("#psave2").onclick = () => save();
+      if (dirty) { const d = $("#pdirty"); d.innerHTML = `${icon("alert")} Unsaved changes`; }
+      preview();
+    };
+    async function uploadPhoto(file) {
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return App.toast("Use a JPG, PNG or WebP Image", true);
+      if (file.size > 8 * 1024 * 1024) return App.toast("That image is too large (max 8 MB before resizing)", true);
+      try {
+        App.toast("Uploading Photo…");
+        const blob = await squareImage(file, 512), path = `${user.id}/avatar-${Date.now()}.webp`;
+        const up = await sb.storage.from("avatars").upload(path, blob, { contentType: blob.type, cacheControl: "31536000", upsert: false });
+        if (up.error) throw up.error;
+        const url = sb.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+        const old = P.photo_url; collect(); P.photo_url = url; await save(true); if (old) removePhoto(old);
+      } catch (x) { fail(x); }
+    }
+    async function removePhoto(url) {
+      const m = String(url || "").match(/\/avatars\/(.+)$/); if (!m) return;
+      try { await sb.storage.from("avatars").remove([decodeURIComponent(m[1].split("?")[0])]); } catch {}
+    }
+    async function save(quiet = false) {
+      collect();
+      if (!P.full_name || P.full_name.length < 3) return App.toast("Enter Your Full Name", true);
+      const links = {}; for (const [k] of LINKS) { const u = safeUrl(P.links[k]); if (P.links[k] && !u) return App.toast(`Check the ${LINKS.find((x) => x[0] === k)[1]} link`, true); if (u) links[k] = u; }
+      const row = { id: user.id, full_name: App.nameCase(P.full_name), designation: P.designation || null, department: P.department || null, faculty_name: P.faculty_name || null,
+        email: P.email || null, phone: P.phone || null, room: P.room || null, consultation: P.consultation || null, bio: P.bio || null,
+        research_interests: P.research_interests.slice(0, 15), education: P.education.filter((e) => e.degree || e.institution).slice(0, 10),
+        publications: P.publications.filter((e) => e.title).map((e) => ({ ...e, url: safeUrl(e.url) })).slice(0, 20), links, photo_url: P.photo_url || null, aiub_profile_url: links.aiub || null, updated_at: new Date().toISOString() };
+      try {
+        await q(sb.from("faculty_profiles").upsert(row, { onConflict: "id" }));
+        if (row.full_name !== user.user_metadata?.full_name) sb.auth.updateUser({ data: { full_name: row.full_name } });
+        PROFILE = row; Object.assign(P, row); dirty = false; draw(); App.toast(quiet ? "Photo Updated" : "Profile Saved");
+      } catch (x) { fail(x); }
+    }
+    draw();
+  }
+  // what the student portal shows (never the phone number)
+  const publicView = (p) => ({ name: p.full_name, designation: p.designation, department: p.department, faculty_name: p.faculty_name, email: p.email, room: p.room, consultation: p.consultation,
+    bio: p.bio, research_interests: p.research_interests, education: p.education, publications: p.publications, links: p.links, photo_url: p.photo_url, aiub_profile_url: p.links?.aiub || p.aiub_profile_url });
+  async function squareImage(file, size) {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
+    const s = Math.min(img.naturalWidth, img.naturalHeight), c = document.createElement("canvas"); c.width = c.height = Math.min(size, s);
+    c.getContext("2d").drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(img.src);
+    return await new Promise((res) => c.toBlob((b) => res(b), "image/webp", 0.88));
   }
 
   // ------------------------------------------------------------------ data for the dashboard
@@ -136,14 +335,14 @@
     const live = sections.filter((s) => st[s.id].open);
     const allAvg = (() => { const xs = sections.map((s) => st[s.id]).filter((x) => x.avg != null); return xs.length ? Math.round(xs.reduce((n, x) => n + x.avg, 0) / xs.length) : null; })();
     const hour = +new Date().toLocaleString("en-GB", { hour: "2-digit", hour12: false, timeZone: cfg.TIME_ZONE || undefined });
-    const hello = hour < 5 ? "Good evening" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+    const hello = hour < 5 ? "Good Evening" : hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
 
     page(`
       <div class="page-head"><div><div class="eyebrow">${icon("calendar")} ${new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: cfg.TIME_ZONE || undefined })}</div>
         <h1>${hello} 👋</h1></div>
         <div class="actions"><a class="btn secondary" href="#/setup">${icon("layers")} Intakes & Courses</a><button class="btn" id="newsec">${icon("plus")} New Section</button></div></div>
       ${live.map((s) => `<div class="live" style="margin-bottom:16px"><span class="live-dot"></span><div class="grow"><b>Attendance Is Open</b> · ${esc(s.course.code)} Section ${esc(s.name)} — ${App.classLabel(st[s.id].open.number)}</div>
-        <a class="btn green sm" href="pin.html?class=${st[s.id].open.id}" target="_blank" rel="noopener">${icon("external")} PIN screen</a></div>`).join("")}
+        <a class="btn green sm" href="pin.html?class=${st[s.id].open.id}" target="_blank" rel="noopener">${icon("external")} PIN Screen</a></div>`).join("")}
       <div class="stats">
         <div class="stat"><div class="ic">${icon("grid")}</div><div><div class="k">Sections</div><div class="v">${sections.length}</div></div></div>
         <div class="stat"><div class="ic violet">${icon("users")}</div><div><div class="k">Students</div><div class="v">${D.totals.students}</div></div></div>
@@ -160,7 +359,7 @@
           <div class="top"><div class="grow"><div class="code">${esc(s.course.code)}${s.class_code ? ` · ${esc(s.class_code)}` : ""}</div><div class="title">${esc(s.course.title)}</div></div>
             <div class="sec-letter" title="Section">${esc(s.name)}</div></div>
           <div class="meta"><span>${icon("calendar")} ${esc(s.intake.name)}</span><span>${icon("users")} ${x.students} students</span><span>${icon("check")} ${x.held}/${x.classes} held</span></div>
-          <div class="foot">${x.open ? `<span class="badge green"><span class="dot"></span> Open Now</span>` : s.portfolio_published ? `<span class="badge blue" title="Portfolio published">${icon("eye")}</span>` : ""}
+          <div class="foot">${x.open ? `<span class="badge green"><span class="dot"></span> Open Now</span>` : s.portfolio_published ? `<span class="badge blue" title="Portfolio Published">${icon("eye")}</span>` : ""}
             ${App.progress(x.avg, s.min_attendance_pct)}<b class="${App.pctClass(x.avg, s.min_attendance_pct)}">${x.avg == null ? "—" : x.avg + "%"}</b></div></a>`; }).join("")}</div>
       <div class="empty hidden" id="noresult"><h3>No Matching Sections</h3><p>Try a different search or intake.</p></div>`
       : `<div class="card"><div class="empty"><div class="ic">${icon("zap")}</div><h3>Let's Set Up Your First Section</h3>
@@ -187,10 +386,10 @@
         <div><label>Course</label><select id="ns_co">${courses.map((c) => `<option value="${c.id}">${esc(c.code)} — ${esc(c.title)}</option>`).join("")}<option value="__new">+ New Course…</option></select>
           <div id="ns_co_new" class="row hidden" style="margin-top:8px"><input id="ns_cc" placeholder="CSC 3215" maxlength="20" style="flex:0 0 120px" /><input id="ns_ct" class="grow" placeholder="Web Technologies" maxlength="120" /></div></div>
         <div><label>Section</label><input id="ns_nm" placeholder="e.g. R" maxlength="20" /></div>
-        <div><label>Class Code <span class="faint">(optional)</span></label><input id="ns_code" placeholder="e.g. 01553" maxlength="20" /></div>
+        <div><label>Class Code <span class="faint">(Optional)</span></label><input id="ns_code" placeholder="e.g. 01553" maxlength="20" /></div>
         <div><label>Classes per Term</label><input id="ns_n" type="number" min="0" max="60" value="12" /><p class="hint">A <b>Mid Term</b> and a <b>Final Term</b> are created with this many classes each.</p></div>
         <div><label>Minimum Attendance</label><input id="ns_min" type="number" min="0" max="100" value="80" /><p class="hint">Students below this % are flagged as at risk.</p></div>
-        <div><label>Instructor <span class="faint">(shown to students)</span></label><input id="ns_ins" maxlength="120" value="${esc((() => { try { return localStorage.getItem("att_instructor") || ""; } catch { return ""; } })())}" placeholder="e.g. Wahidul Alam Riyad" /></div>
+        <div><label>Instructor <span class="faint">(Shown to Students)</span></label><input id="ns_ins" maxlength="120" value="${esc(myName() || (() => { try { return localStorage.getItem("att_instructor") || ""; } catch { return ""; } })())}" placeholder="e.g. Wahidul Alam Riyad" /></div>
         <div><label>Assessment Plan</label><select id="ns_plan"><option value="">Set up later</option>${Object.entries(Grade.PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.label)}</option>`).join("")}</select><p class="hint">Quizzes, exams, weights and COs — editable later.</p></div></div>`,
       validate: (m) => {
         if (m.querySelector("#ns_in").value === "__new" && !m.querySelector("#ns_in_new").value.trim()) return "Type the new intake name.";
@@ -215,7 +414,7 @@
         const course = (await q(sb.from("courses").select("id, cos").eq("id", courseId).single()));
         if (pre.cos.length && !(course.cos || []).length) await q(sb.from("courses").update({ cos: pre.cos }).eq("id", courseId));
       }
-      App.toast("Section created — now upload the student list"); go(`#/section/${sec.id}/students`);
+      App.toast("Section Created — Now Upload the Student List"); go(`#/section/${sec.id}/students`);
     } catch (x) { fail(x); }
     // reveal "new" fields
   }
@@ -238,14 +437,14 @@
           <ul class="list">${intakes.map((i) => `<li><span class="grow"><b>${esc(i.name)}</b></span><span class="badge">${nI(i.id)} sections</span>
             <button class="icon-btn" data-ren-intake="${i.id}" data-name="${esc(i.name)}" title="Rename">${icon("edit")}</button>
             <button class="icon-btn danger" data-del-intake="${i.id}" title="Delete">${icon("trash")}</button></li>`).join("") || `<li class="muted">No intakes yet.</li>`}</ul></div>
-        <div class="card"><div class="card-head"><div><h2>Courses</h2><div class="sub">Course code and title</div></div></div>
+        <div class="card"><div class="card-head"><div><h2>Courses</h2><div class="sub">Course Code and Title</div></div></div>
           <form id="fco" class="row" style="margin-bottom:14px"><div class="f" style="flex:0 0 130px;min-width:110px"><input id="co_cd" placeholder="CSC 3215" maxlength="20" required /></div>
             <div class="f"><input id="co_tt" placeholder="Web Technologies" maxlength="120" required /></div><button class="btn">${icon("plus")} Add</button></form>
           <ul class="list">${courses.map((c) => `<li><span class="code">${esc(c.code)}</span><span class="grow">${esc(c.title)}</span><span class="badge">${nC(c.id)}</span>
             <button class="icon-btn" data-ren-course="${c.id}" title="Edit">${icon("edit")}</button>
             <button class="icon-btn danger" data-del-course="${c.id}" title="Delete">${icon("trash")}</button></li>`).join("") || `<li class="muted">No courses yet.</li>`}</ul></div></div>`);
-    $("#fin").onsubmit = async (e) => { e.preventDefault(); try { await q(sb.from("intakes").insert({ name: $("#in_nm").value.trim() })); App.toast("Intake added"); renderSetup(); } catch (x) { fail(x); } };
-    $("#fco").onsubmit = async (e) => { e.preventDefault(); try { await q(sb.from("courses").insert({ code: $("#co_cd").value.trim(), title: $("#co_tt").value.trim() })); App.toast("Course added"); renderSetup(); } catch (x) { fail(x); } };
+    $("#fin").onsubmit = async (e) => { e.preventDefault(); try { await q(sb.from("intakes").insert({ name: $("#in_nm").value.trim() })); App.toast("Intake Added"); renderSetup(); } catch (x) { fail(x); } };
+    $("#fco").onsubmit = async (e) => { e.preventDefault(); try { await q(sb.from("courses").insert({ code: $("#co_cd").value.trim(), title: $("#co_tt").value.trim() })); App.toast("Course Added"); renderSetup(); } catch (x) { fail(x); } };
     $$("[data-ren-intake]").forEach((b) => (b.onclick = async () => {
       const d = await App.dialog({ title: "Rename Intake", ic: "edit", okText: "Save", html: true, body: `<label>Name</label><input id="rn" maxlength="60" value="${b.dataset.name}" />` });
       if (d) try { await q(sb.from("intakes").update({ name: d.querySelector("#rn").value.trim() }).eq("id", b.dataset.renIntake)); renderSetup(); } catch (x) { fail(x); }
@@ -258,11 +457,11 @@
     }));
     $$("[data-del-intake]").forEach((b) => (b.onclick = async () => {
       if (!(await App.confirm("Delete This Intake?", "Every section in this intake — with its students, classes and attendance — will be permanently deleted."))) return;
-      try { await q(sb.from("intakes").delete().eq("id", b.dataset.delIntake)); App.toast("Intake deleted"); renderSetup(); } catch (x) { fail(x); }
+      try { await q(sb.from("intakes").delete().eq("id", b.dataset.delIntake)); App.toast("Intake Deleted"); renderSetup(); } catch (x) { fail(x); }
     }));
     $$("[data-del-course]").forEach((b) => (b.onclick = async () => {
       if (!(await App.confirm("Delete This Course?", "Every section of this course — with its students, classes and attendance — will be permanently deleted."))) return;
-      try { await q(sb.from("courses").delete().eq("id", b.dataset.delCourse)); App.toast("Course deleted"); renderSetup(); } catch (x) { fail(x); }
+      try { await q(sb.from("courses").delete().eq("id", b.dataset.delCourse)); App.toast("Course Deleted"); renderSetup(); } catch (x) { fail(x); }
     }));
   }
 
@@ -322,7 +521,7 @@
     const tabs = [["overview", "Overview", "chart"], ["classes", "Classes", "calendar", classes.length], ["students", "Students", "users", students.length], ["sheet", "Attendance", "grid"],
       ["marks", "Marks", "book", S.assess.length || null], ["groups", "Groups", "layers", S.groups.length || null], ["results", "Results", "target"], ["log", "Check-In Log", "list", S.att.length], ["settings", "Settings", "settings"]];
     page(`<div class="crumbs"><a href="#/">${icon("back")} All Sections</a></div>
-      <div class="page-head"><div><div class="eyebrow"><span class="badge blue">${esc(sec.course.code)}</span>${sec.class_code ? `<span>Class Code ${esc(sec.class_code)}</span><span>·</span>` : ""}<span>${esc(sec.intake.name)}</span><span>·</span><span class="badge ${sec.portfolio_published ? "green" : ""}" title="Student portfolio">${icon(sec.portfolio_published ? "eye" : "eyeoff")} Portfolio ${sec.portfolio_published ? "Published" : "Not Published"}</span></div>
+      <div class="page-head"><div><div class="eyebrow"><span class="badge blue">${esc(sec.course.code)}</span>${sec.class_code ? `<span>Class Code ${esc(sec.class_code)}</span><span>·</span>` : ""}<span>${esc(sec.intake.name)}</span><span>·</span><span class="badge ${sec.portfolio_published ? "green" : ""}" title="Student Portfolio">${icon(sec.portfolio_published ? "eye" : "eyeoff")} Portfolio ${sec.portfolio_published ? "Published" : "Not Published"}</span></div>
         <h1>${esc(sec.course.title)} <span class="muted" style="font-weight:600">· Section ${esc(sec.name)}</span></h1></div>
         <div class="actions"><button class="btn secondary" id="share">${icon("qr")} Student Portal</button>
           <button class="btn secondary" id="xls">${icon("download")} Export Excel</button>
@@ -381,7 +580,7 @@
             <div class="bar-labels">${allCols.map(({ t, c }) => `<span title="${esc(t.name)} · ${App.classLabel(c.number)}">${esc((t.name.trim()[0] || "").toUpperCase())}${App.pad2(c.number)}</span>`).join("")}</div>`
           : `<div class="empty"><div class="ic">${icon("chart")}</div><h3>No Classes Held Yet</h3><p>Start the PIN for your first class — the chart fills in as students check in.</p></div>`}
         </div>
-        <div class="card"><div class="card-head"><div><h2>Students Below ${min}%</h2><div class="sub">${X.risk.length ? "Consider contacting these students" : "Everyone is above the minimum — great!"}</div></div>
+        <div class="card"><div class="card-head"><div><h2>Students Below ${min}%</h2><div class="sub">${X.risk.length ? "Consider Contacting These Students" : "Everyone is above the minimum — great!"}</div></div>
           ${X.risk.length ? `<button class="btn sm secondary" id="cprisk">${icon("copy")} Copy IDs</button>` : ""}</div>
           ${X.risk.length ? `<div class="table-wrap" style="max-height:420px"><table><thead><tr><th>Student ID</th><th>Name</th><th class="num">Attended</th><th class="num">Attendance</th></tr></thead><tbody>
             ${X.risk.sort((a, b) => X.per[a.student_id].p - X.per[b.student_id].p).map((s) => { const p = X.per[s.student_id]; return `<tr class="clickable" data-stu="${esc(s.student_id)}"><td><b>${esc(s.student_id)}</b></td><td>${esc(s.name)}</td>
@@ -453,7 +652,7 @@
     $$("[data-cls-menu]").forEach((b) => (b.onclick = () => classMenu(b, b.dataset.clsMenu)));
     $("#fterm").onsubmit = async (e) => {
       e.preventDefault();
-      try { const t = await q(sb.from("terms").insert({ section_id: sec.id, name: $("#t_nm").value.trim(), sort: terms.length + 1 }).select().single()); t.classes = []; S.terms.push(t); drawSection(); App.toast("Term added"); } catch (x) { fail(x); }
+      try { const t = await q(sb.from("terms").insert({ section_id: sec.id, name: $("#t_nm").value.trim(), sort: terms.length + 1 }).select().single()); t.classes = []; S.terms.push(t); drawSection(); App.toast("Term Added"); } catch (x) { fail(x); }
     };
   }
 
@@ -469,22 +668,22 @@
           const d = await App.dialog({ title: `Edit ${App.classLabel(c.number)}`, ic: "edit", okText: "Save", html: true,
             body: `<div class="grid cols-2"><div><label>Class Number</label><input id="e_no" type="number" min="1" max="200" value="${c.number}" /></div>
               <div><label>Date</label><input id="e_dt" type="date" value="${esc(c.class_date || "")}" /></div></div>
-              <div class="field-gap"></div><label>Topic <span class="faint">(optional)</span></label><input id="e_tt" maxlength="120" value="${esc(c.title || "")}" placeholder="e.g. HTML forms" />` });
+              <div class="field-gap"></div><label>Topic <span class="faint">(Optional)</span></label><input id="e_tt" maxlength="120" value="${esc(c.title || "")}" placeholder="e.g. HTML forms" />` });
           if (!d) return;
           const upd = { number: +d.querySelector("#e_no").value, title: d.querySelector("#e_tt").value.trim() || null, class_date: d.querySelector("#e_dt").value || null };
-          await q(sb.from("classes").update(upd).eq("id", c.id)); Object.assign(c, upd); await loadAttendance(); drawSection(); App.toast("Class updated");
+          await q(sb.from("classes").update(upd).eq("id", c.id)); Object.assign(c, upd); await loadAttendance(); drawSection(); App.toast("Class Updated");
         } else if (v === "all") {
           const missing = S.students.filter((s) => !recs(c.id)[s.student_id]);
-          if (!missing.length) return App.toast("Everyone is already marked");
+          if (!missing.length) return App.toast("Everyone Is Already Marked");
           if (!(await App.confirm("Mark Everyone Present?", `${missing.length} students without a record for ${App.classLabel(c.number)} will be marked present.`, "Mark Present", false))) return;
           for (let i = 0; i < missing.length; i += 500) await q(sb.from("attendance").insert(missing.slice(i, i + 500).map((s) => ({ class_id: c.id, student_id: s.student_id, student_name: s.name, source: "manual", status: "present" }))));
           await markHeld(c); await loadAttendance(); drawSection(); App.toast(`${missing.length} marked present`);
         } else if (v === "clear") {
           if (!(await App.confirm("Clear Attendance?", `All ${Object.keys(recs(c.id)).length} records for ${App.classLabel(c.number)} will be deleted.`, "Clear"))) return;
-          await q(sb.from("attendance").delete().eq("class_id", c.id)); await loadAttendance(); drawSection(); App.toast("Attendance cleared");
+          await q(sb.from("attendance").delete().eq("class_id", c.id)); await loadAttendance(); drawSection(); App.toast("Attendance Cleared");
         } else if (v === "del") {
           if (!(await App.confirm(`Delete ${App.classLabel(c.number)}?`, "The class and its attendance records will be permanently deleted."))) return;
-          await q(sb.from("classes").delete().eq("id", c.id)); S.classes = S.classes.filter((x) => x.id !== c.id); await loadAttendance(); drawSection(); App.toast("Class deleted");
+          await q(sb.from("classes").delete().eq("id", c.id)); S.classes = S.classes.filter((x) => x.id !== c.id); await loadAttendance(); drawSection(); App.toast("Class Deleted");
         }
       } catch (x) { fail(x); }
     });
@@ -563,7 +762,7 @@
       else if (v === "cp") App.copy(students.map((s) => s.student_id).join("\n"), `${students.length} IDs copied`);
       else if (v === "clr") {
         if (!(await App.confirm("Remove All Students?", "The whole list for this section will be removed. Attendance already recorded stays in the database.", "Remove All"))) return;
-        try { await q(sb.from("students").delete().eq("section_id", S.sec.id)); S.students = []; drawSection(); App.toast("All students removed"); } catch (x) { fail(x); }
+        try { await q(sb.from("students").delete().eq("section_id", S.sec.id)); S.students = []; drawSection(); App.toast("All Students Removed"); } catch (x) { fail(x); }
       }
     });
     $$("#stb tr[data-stu]").forEach((r) => (r.onclick = (e) => { if (e.target.closest("button")) return; studentProfile(r.dataset.stu); }));
@@ -572,7 +771,7 @@
     $$("[data-del-stu]").forEach((b) => (b.onclick = async () => {
       const s = S.students.find((x) => x.id === b.dataset.delStu);
       if (!(await App.confirm("Remove Student?", `${s.student_id} ${s.name} will no longer be able to check in. Past attendance stays.`, "Remove"))) return;
-      try { await q(sb.from("students").delete().eq("id", s.id)); S.students = S.students.filter((x) => x.id !== s.id); drawSection(); App.toast("Student removed"); } catch (x) { fail(x); }
+      try { await q(sb.from("students").delete().eq("id", s.id)); S.students = S.students.filter((x) => x.id !== s.id); drawSection(); App.toast("Student Removed"); } catch (x) { fail(x); }
     }));
   }
   const normId = (v) => String(v ?? "").trim().toUpperCase().replace(/\s+/g, "");
@@ -588,7 +787,7 @@
       const name = App.nameCase(d.querySelector("#o_nm").value.replace(/\s+/g, " "));
       if (s) { await q(sb.from("students").update({ name }).eq("id", s.id)); s.name = name; }
       else { const row = await q(sb.from("students").insert({ section_id: S.sec.id, student_id: normId(d.querySelector("#o_id").value), name, seq: S.students.length + 1 }).select().single()); S.students.push(row); }
-      drawSection(); App.toast(s ? "Saved" : "Student added");
+      drawSection(); App.toast(s ? "Saved" : "Student Added");
     } catch (x) { fail(x); }
   }
 
@@ -724,7 +923,7 @@
           <td><b>${esc(a.student_id)}</b></td><td>${esc(a.student_name)}</td>
           <td><span class="badge ${STATUS[a.status].cls}">${STATUS[a.status].label}</span></td>
           <td>${a.source === "pin" ? `<span class="badge blue">${icon("smartphone")} PIN</span>` : `<span class="badge">${icon("edit")} Manual</span>`}</td>
-          <td class="mono xs">${a.device_id ? esc(a.device_id.slice(0, 8)) : "—"} ${shared(a) ? `<span class="badge red" title="Same device used for another student in this class">Shared</span>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`
+          <td class="mono xs">${a.device_id ? esc(a.device_id.slice(0, 8)) : "—"} ${shared(a) ? `<span class="badge red" title="Same Device Used for Another Student in This Class">Shared</span>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`
       : `<div class="empty"><div class="ic">${icon("list")}</div><h3>No Check-Ins Yet</h3><p>Records appear here as students check in or you mark them.</p></div>`}</div>`;
     $("#lc").onchange = (e) => { ui.logClass = e.target.value; drawSection(); };
     $$("#lsrc button").forEach((b) => (b.onclick = () => { ui.logSrc = b.dataset.s; drawSection(); }));
@@ -766,7 +965,7 @@
     };
     $("#saverules").onclick = async () => {
       const upd = { late_after_minutes: lateV, min_attendance_pct: +$("#minp").value, one_device_per_class: $("#st_dev").checked };
-      try { await q(sb.from("sections").update(upd).eq("id", sec.id)); Object.assign(sec, upd); drawSection(); App.toast("Rules saved"); } catch (x) { fail(x); }
+      try { await q(sb.from("sections").update(upd).eq("id", sec.id)); Object.assign(sec, upd); drawSection(); App.toast("Rules Saved"); } catch (x) { fail(x); }
     };
     bindGrading();
     $("#delsec").onclick = async () => {
@@ -774,7 +973,7 @@
         body: `<p>${esc(sec.course.code)} Section ${esc(sec.name)} — the student list, classes, attendance, marks and groups will be permanently deleted. Export to Excel first if you need a copy.</p>
           <label>Type <b>${esc(sec.name)}</b> to confirm</label><input id="cf" />`, validate: (m) => (m.querySelector("#cf").value.trim() !== sec.name ? `Type ${sec.name} to confirm.` : null) });
       if (!d) return;
-      try { await q(sb.from("sections").delete().eq("id", sec.id)); S = null; App.toast("Section deleted"); go("#/"); } catch (x) { fail(x); }
+      try { await q(sb.from("sections").delete().eq("id", sec.id)); S = null; App.toast("Section Deleted"); go("#/"); } catch (x) { fail(x); }
     };
   }
 
@@ -849,7 +1048,7 @@
     XLSX.utils.book_append_sheet(wb, wsL, "Check-in Log");
 
     XLSX.writeFile(wb, `Classfolio_${safe(sec.course.code)}_${safe(sec.intake.name)}_Sec-${safe(sec.name)}_${new Date().toLocaleDateString("en-CA")}.xlsx`);
-    App.toast("Excel file downloaded");
+    App.toast("Excel File Downloaded");
   }
   function fmtPct(ws, col, n) { const c = XLSX.utils.encode_col(col); for (let r = 2; r <= n + 1; r++) { const cell = ws[`${c}${r}`]; if (cell && cell.t === "n") cell.z = "0%"; } }
 
@@ -1026,14 +1225,14 @@
         max_marks: x.max_marks, weight: x.weight, co: x.co || null, by_group: !!x.by_group, visible: true, sort: i + 1 }))));
       for (let i = 0; i < 2; i++) { await q(sb.from("terms").update({ weight: p.termWeights[i] }).eq("id", terms[i].id)); terms[i].weight = p.termWeights[i]; }
       if (p.cos.length && !(S.sec.course.cos || []).length) { await q(sb.from("courses").update({ cos: p.cos }).eq("id", S.sec.course.id)); S.sec.course.cos = p.cos; }
-      await loadMarks(); drawSection(); App.toast("Assessment plan ready — start entering marks");
+      await loadMarks(); drawSection(); App.toast("Assessment Plan Ready — Start Entering Marks");
     } catch (x) { fail(x); }
   }
 
   // ---------- Assessment plan editor
   async function planEditor() {
     const terms = [...S.terms].sort(bySort);
-    if (!terms.length) return App.toast("Add a term in the Classes tab first", true);
+    if (!terms.length) return App.toast("Add a Term in the Classes Tab First", true);
     let local = S.assess.map((a) => ({ ...a })).sort(bySort), cur = UI[S.sec.id].mterm || terms[0].id;
     const tw = Object.fromEntries(terms.map((t) => [t.id, t.weight ?? ""]));
     const cos = (S.sec.course.cos || []).map((c) => c.code);
@@ -1052,9 +1251,9 @@
           ${terms.map((t) => `<label class="row center-y" style="gap:8px;margin:0;font-weight:500">${esc(t.name)} <input data-tw="${t.id}" type="number" min="0" max="100" step="5" value="${tw[t.id]}" style="width:76px;min-height:34px;padding:4px 8px" /> %</label>`).join("")}
           <span class="weight-meter ${Math.abs(twSum - 100) < 0.01 ? "ok" : "bad"}">${fmt(twSum, 2)}%</span><span class="faint">AIUB: Mid 40% · Final 60%</span></div>
         <datalist id="grps">${groups.map((g) => `<option value="${esc(g)}">`).join("")}</datalist><datalist id="cosl">${cos.map((c) => `<option value="${esc(c)}">`).join("")}</datalist>
-        <div class="table-wrap" style="max-height:440px"><table class="plan-table"><thead><tr><th></th><th>Group <span class="faint">(optional)</span></th><th>Assessment</th><th>Group Rule</th><th>Type</th><th class="num">Full Mark</th><th class="num">Weight %</th><th>CO</th><th class="center" title="One mark for the whole project group">Group Mark</th><th class="center" title="Students can see this mark">Visible</th><th></th></tr></thead>
+        <div class="table-wrap" style="max-height:440px"><table class="plan-table"><thead><tr><th></th><th>Group <span class="faint">(Optional)</span></th><th>Assessment</th><th>Group Rule</th><th>Type</th><th class="num">Full Mark</th><th class="num">Weight %</th><th>CO</th><th class="center" title="One Mark for the Whole Project Group">Group Mark</th><th class="center" title="Students Can See This Mark">Visible</th><th></th></tr></thead>
           <tbody>${rows.map((a) => { const i = local.indexOf(a); return `<tr data-i="${i}">
-            <td class="nowrap"><button class="icon-btn" data-up="${i}" title="Move up" style="width:28px;height:28px;transform:rotate(90deg)">${icon("back")}</button></td>
+            <td class="nowrap"><button class="icon-btn" data-up="${i}" title="Move Up" style="width:28px;height:28px;transform:rotate(90deg)">${icon("back")}</button></td>
             <td><input data-f="grp" list="grps" value="${esc(a.grp || "")}" placeholder="—" style="min-width:140px" /></td>
             <td><input data-f="name" value="${esc(a.name)}" style="min-width:230px" /></td>
             <td><select data-f="rule" style="min-width:128px" ${a.grp ? "" : "disabled"}>${Object.entries(Grade.RULES).map(([k, l]) => `<option value="${k}" ${a.rule === k ? "selected" : ""}>${l}</option>`).join("")}</select></td>
@@ -1118,7 +1317,7 @@
       if (local._cos && local._cos.length && !(S.sec.course.cos || []).length) { await q(sb.from("courses").update({ cos: local._cos }).eq("id", S.sec.course.id)); S.sec.course.cos = local._cos; }
       await loadMarks(); drawSection();
       const bad = terms.filter((t) => Math.abs(termSum(t.id) - 100) > 0.01 && local.some((a) => a.term_id === t.id));
-      App.toast(bad.length ? `Plan saved — ${bad.map((t) => t.name).join(", ")} does not add up to 100%` : "Assessment plan saved", !!bad.length);
+      App.toast(bad.length ? `Plan saved — ${bad.map((t) => t.name).join(", ")} does not add up to 100%` : "Assessment Plan Saved", !!bad.length);
     } catch (x) { fail(x); }
   }
 
@@ -1173,9 +1372,9 @@
       ${gAss.length ? "" : `<div class="msg info" style="margin:0 0 20px">${icon("info")}<div>Tip: in the Assessment Plan, tick <b>Group Mark</b> on project items. Then you can give one mark per group here and every member gets it.</div></div>`}
       ${S.groups.length ? `<div class="grp-grid">${S.groups.map((g) => { const mem = S.members.filter((m) => m.group_id === g.id);
         return `<div class="grp-card" data-g="${g.id}"><div class="row center-y" style="gap:10px"><div class="sec-letter" style="width:40px;height:40px;border-radius:11px;display:grid;place-items:center;font-weight:800;background:var(--primary-soft);color:var(--primary)">${esc(g.name.replace(/\D/g, "") || g.name[0])}</div>
-            <div class="grow"><b>${esc(g.name)}</b><div class="xs muted">${g.title ? esc(g.title) : "No project title"}</div></div>
+            <div class="grow"><b>${esc(g.name)}</b><div class="xs muted">${g.title ? esc(g.title) : "No Project Title"}</div></div>
             <button class="icon-btn" data-gedit="${g.id}" title="Rename">${icon("edit")}</button><button class="icon-btn danger" data-gdel="${g.id}" title="Delete">${icon("trash")}</button></div>
-          <div class="members">${mem.map((m) => `<div class="member"><b>${esc(m.student_id)}</b><span class="grow">${esc(nameOf(m.student_id))}</span><button class="icon-btn" data-mrem="${m.id}" title="Remove" style="width:28px;height:28px">${icon("x")}</button></div>`).join("") || `<span class="small faint">No members yet</span>`}</div>
+          <div class="members">${mem.map((m) => `<div class="member"><b>${esc(m.student_id)}</b><span class="grow">${esc(nameOf(m.student_id))}</span><button class="icon-btn" data-mrem="${m.id}" title="Remove" style="width:28px;height:28px">${icon("x")}</button></div>`).join("") || `<span class="small faint">No Members Yet</span>`}</div>
           ${free.length ? `<select data-madd="${g.id}"><option value="">+ Add a student…</option>${free.map((s) => `<option value="${esc(s.student_id)}">${esc(s.student_id)} — ${esc(s.name)}</option>`).join("")}</select>` : ""}
           ${gAss.length && mem.length ? `<div class="grp-marks">${gAss.map((a) => { const vals = mem.map((m) => markOf(a.id, m.student_id)), same = vals.every((v) => v === vals[0]);
             return `<span>${esc(itemLabel(a))} <span class="faint xs">/ ${fmt(a.max_marks, 2)} · ${esc(S.terms.find((t) => t.id === a.term_id)?.name || "")}</span></span>
@@ -1197,14 +1396,14 @@
       const raw = inp.value.trim(), max = +inp.dataset.max, v = raw === "" ? null : +raw.replace(",", ".");
       if (v != null && (isNaN(v) || v < 0 || v > max)) { inp.classList.add("bad"); return App.toast(`Enter a number from 0 to ${max}`, true); }
       const g = inp.closest("[data-g]").dataset.g; S.members.filter((m) => m.group_id === g).forEach((m) => queueMark(inp.dataset.gm, m.student_id, v == null ? null : Math.round(v * 100) / 100));
-      await flushMarks(); App.toast("Group mark saved for every member");
+      await flushMarks(); App.toast("Group Mark Saved for Every Member");
     }));
   }
   async function editGroup(g) {
     const n = S.groups.length + 1;
     const d = await App.dialog({ title: g ? "Edit Group" : "New Group", ic: g ? "edit" : "plus", okText: g ? "Save" : "Create Group", html: true,
       body: `<label>Group Name</label><input id="gn" maxlength="40" value="${esc(g?.name || `Group ${App.pad2(n)}`)}" /><div class="field-gap"></div>
-        <label>Project Title <span class="faint">(optional)</span></label><input id="gt" maxlength="160" value="${esc(g?.title || "")}" placeholder="e.g. Online Library System" />`,
+        <label>Project Title <span class="faint">(Optional)</span></label><input id="gt" maxlength="160" value="${esc(g?.title || "")}" placeholder="e.g. Online Library System" />`,
       validate: (m) => (!m.querySelector("#gn").value.trim() ? "Type a group name." : null) });
     if (!d) return;
     const row = { name: d.querySelector("#gn").value.trim(), title: d.querySelector("#gt").value.trim() || null };
@@ -1212,7 +1411,7 @@
   }
   async function autoGroups() {
     const mg = maxGroups(), inGroup = new Set(S.members.map((m) => m.student_id)), free = S.students.filter((s) => !inGroup.has(s.student_id));
-    if (!free.length) return App.toast("Every student is already in a group");
+    if (!free.length) return App.toast("Every Student Is Already in a Group");
     const d = await App.dialog({ title: "Auto-Create Groups", ic: "zap", okText: "Create Groups", html: true,
       body: `<p>${free.length} students are not in a group yet.</p><div class="grid cols-2"><div><label>Number of Groups</label><input id="ag_n" type="number" min="1" max="${mg}" value="${Math.min(mg, Math.max(1, Math.ceil(free.length / 4)))}" /><p class="hint">Up to ${mg} for this section.</p></div>
         <div><label>Order</label><select id="ag_o"><option value="seq">Student list order</option><option value="rand">Random</option></select></div></div>` });
@@ -1248,7 +1447,7 @@
     $("#tab").innerHTML = `
       <div class="card" style="margin-bottom:20px"><div class="row center-y" style="gap:16px">
         <div class="stat" style="border:0;box-shadow:none;padding:0;background:none"><div class="ic ${S.sec.portfolio_published ? "green" : ""}">${icon(S.sec.portfolio_published ? "eye" : "eyeoff")}</div></div>
-        <div class="grow"><b>${S.sec.portfolio_published ? "Portfolios are published" : "Portfolios are not published yet"}</b>
+        <div class="grow"><b>${S.sec.portfolio_published ? "Portfolios Are Published" : "Portfolios Are Not Published Yet"}</b>
           <div class="small muted">${S.sec.portfolio_published ? "Students see their marks, grade, COs and attendance in the Student Portal by typing their ID. Items marked Hidden in the plan are not shown." : "Students can still mark attendance. Publish when you want them to see their marks and grades."}</div></div>
         <label class="switch" style="align-items:center"><input type="checkbox" id="pub" ${S.sec.portfolio_published ? "checked" : ""} /> <b>Show to Students</b></label></div></div>
       <div class="stats" style="margin-bottom:20px">
@@ -1257,7 +1456,7 @@
         <div class="stat"><div class="ic amber">${icon("target")}</div><div><div class="k">Lowest</div><div class="v">${fmt(Math.min(...totals))}</div></div></div>
         <div class="stat"><div class="ic violet">${icon("check")}</div><div><div class="k">Passing (D or Above)</div><div class="v">${pass}<small> / ${list.length}</small></div></div></div></div>
       <div class="grid cols-2" style="margin-bottom:20px;align-items:start">
-        <div class="card"><div class="card-head"><div><h2>Grade Distribution</h2><div class="sub">${anyOpen ? "Current standing — based on the marks entered so far" : "Final grades"}</div></div></div>
+        <div class="card"><div class="card-head"><div><h2>Grade Distribution</h2><div class="sub">${anyOpen ? "Current standing — based on the marks entered so far" : "Final Grades"}</div></div></div>
           <div class="dist">${dist.map((d) => `<div class="d ${d.g === "F" ? "F" : ""}"><b>${d.n}</b><div class="f" style="height:${(d.n / dmax) * 75}%"></div><span>${esc(d.g)}</span></div>`).join("")}</div></div>
         <div class="card"><div class="card-head"><div><h2>Course Outcome Attainment</h2><div class="sub">Students reaching ${S.sec.course.co_target ?? 60}% of each CO's marks</div></div></div>
           ${coSum.length ? `<div class="bands">${coSum.map((c) => { const p = c.n ? Math.round((c.att / c.n) * 100) : 0; return `<div class="band" style="grid-template-columns:56px 1fr 120px"><b style="color:var(--excused)">${esc(c.code)}</b>
@@ -1269,13 +1468,13 @@
           <select id="rs" style="width:auto"><option value="seq">List Order</option><option value="high">Highest Total</option><option value="low">Lowest Total</option><option value="id">Student ID</option></select></div>
         <button class="btn sm secondary" id="rx">${icon("download")} Export Results</button></div>
         <div class="table-wrap keep" style="max-height:640px;border-radius:0;border-left:0;border-right:0;border-bottom:0"><table class="res-table"><thead><tr><th>Student ID</th><th>Name</th>
-          ${S.terms.map((t) => `<th class="num">${esc(t.name)}</th>`).join("")}<th class="num" title="All marks so far, out of 100">Grand Total</th><th class="num" title="Score on the marks entered so far">Standing</th><th>Grade</th><th class="num">Point</th><th class="num">Attendance</th>${coCodes.length ? `<th class="num">COs</th>` : ""}<th>Special</th><th></th></tr></thead>
+          ${S.terms.map((t) => `<th class="num">${esc(t.name)}</th>`).join("")}<th class="num" title="All Marks So Far, Out of 100">Grand Total</th><th class="num" title="Score on the Marks Entered So Far">Standing</th><th>Grade</th><th class="num">Point</th><th class="num">Attendance</th>${coCodes.length ? `<th class="num">COs</th>` : ""}<th>Special</th><th></th></tr></thead>
           <tbody id="rtb">${list.map(({ s, r, fin, g }) => `<tr data-q="${esc((s.student_id + " " + s.name).toLowerCase())}">
             <td><b>${esc(s.student_id)}</b></td><td>${esc(s.name)}</td>
             ${r.terms.map((t) => `<td class="num">${t.empty ? "—" : `${fmt(t.total)} <span class="faint xs">${esc(t.grade?.grade || "")}</span>`}</td>`).join("")}
             <td class="num"><b style="font-size:15px">${fmt(r.overall)}</b></td>
             <td class="num">${r.standing == null ? "—" : `${fmt(r.standing)}%`}</td>
-            <td>${!g ? `<span class="faint">—</span>` : `<span class="grade-pill sm ${gradeTone(g?.grade)}" style="${fin ? "" : "background:transparent;box-shadow:inset 0 0 0 1.5px currentColor"}" title="${fin ? "Final grade" : "Current standing — not final"}">${esc(g?.grade || "—")}</span>${fin ? "" : ` <span class="faint xs">so far</span>`}`}</td>
+            <td>${!g ? `<span class="faint">—</span>` : `<span class="grade-pill sm ${gradeTone(g?.grade)}" style="${fin ? "" : "background:transparent;box-shadow:inset 0 0 0 1.5px currentColor"}" title="${fin ? "Final Grade" : "Current Standing — Not Final"}">${esc(g?.grade || "—")}</span>${fin ? "" : ` <span class="faint xs">So Far</span>`}`}</td>
             <td class="num">${fin && g?.point != null ? (+g.point).toFixed(2) : "—"}</td>
             <td class="num ${App.pctClass(r.attPct, X.min)}">${r.attPct == null ? "—" : r.attPct + "%"}</td>
             ${coCodes.length ? `<td class="num">${r.coAttained} / ${r.coList.length}</td>` : ""}
@@ -1288,11 +1487,11 @@
     $("#pub").onchange = (e) => setPublished(e.target.checked);
     $$("[data-pf]").forEach((b) => (b.onclick = () => portfolioModal(b.dataset.pf)));
     $$("[data-sg]").forEach((sel) => (sel.onchange = async () => { const s = S.students.find((x) => x.id === sel.dataset.sg), v = sel.value || null;
-      try { await q(sb.from("students").update({ special_grade: v }).eq("id", s.id)); s.special_grade = v; drawSection(); App.toast(v ? `${s.student_id} marked ${v}` : "Special grade removed"); } catch (x) { fail(x); } }));
+      try { await q(sb.from("students").update({ special_grade: v }).eq("id", s.id)); s.special_grade = v; drawSection(); App.toast(v ? `${s.student_id} marked ${v}` : "Special Grade Removed"); } catch (x) { fail(x); } }));
   }
   async function setPublished(on) {
     if (on && !(await App.confirm("Publish portfolios?", "Students will see their marks, grade, course outcomes and attendance in the Student Portal by typing their Student ID. Items marked Hidden stay hidden.", "Publish", false))) return drawSection();
-    try { await q(sb.from("sections").update({ portfolio_published: on }).eq("id", S.sec.id)); S.sec.portfolio_published = on; drawSection(); App.toast(on ? "Portfolios published" : "Portfolios hidden from students"); } catch (x) { fail(x); }
+    try { await q(sb.from("sections").update({ portfolio_published: on }).eq("id", S.sec.id)); S.sec.portfolio_published = on; drawSection(); App.toast(on ? "Portfolios Published" : "Portfolios Hidden from Students"); } catch (x) { fail(x); }
   }
 
   // ---------- Grading & course settings (part of the Settings tab)
@@ -1304,14 +1503,15 @@
         <div class="stack-sm" id="colist">${(c.cos || []).map((o, i) => coRow(o, i)).join("")}</div>
         <button class="btn sm secondary" id="coadd" style="margin-top:12px">${icon("plus")} Add Outcome</button>
         <div style="height:16px"></div><button class="btn" id="saveco">${icon("check")} Save Course Outcomes</button></div>`;
-    return `<div class="card"><div class="card-head"><div><h2>Student Portfolio</h2><div class="sub">What students see in the Student Portal</div></div></div>
+    return `<div class="card"><div class="card-head"><div><h2>Student Portfolio</h2><div class="sub">What Students See in the Student Portal</div></div></div>
         <label class="switch"><input type="checkbox" id="st_pub" ${sec.portfolio_published ? "checked" : ""} /><span>Show Portfolio to Students<span class="d">Marks, grade, course outcomes and attendance. Students open the portal and type their Student ID.</span></span></label>
         <div class="field-gap"></div>
         <label class="switch"><input type="checkbox" id="st_code" ${sec.portfolio_code_required ? "checked" : ""} /><span>Require a Personal Access Code<span class="d">Recommended. Each student also needs their own 6-character code to open the portfolio, so nobody can view another student's marks by typing their ID. Attendance check-in is not affected.</span></span></label>
         <div class="btn-group" style="margin-top:12px;padding-left:56px"><button class="btn sm secondary" id="dlcodes">${icon("download")} Download Access Codes</button><button class="btn sm ghost" id="newcodes">${icon("refresh")} New Codes for Everyone</button></div>
-        <div class="field-gap"></div><label>Instructor Name <span class="faint">(shown to students)</span></label><input id="st_ins" maxlength="120" value="${esc(sec.instructor || "")}" placeholder="e.g. Wahidul Alam Riyad" />
+        <div class="field-gap"></div><label>Instructor Name <span class="faint">(If Different from Your Profile)</span></label><input id="st_ins" maxlength="120" value="${esc(sec.instructor || "")}" placeholder="${esc(myName() || "e.g. Wahidul Alam Riyad")}" />
+        <p class="hint">Students See Your <a href="#/profile">profile</a> — photo, research interests, bio and links.</p>
         <div style="height:16px"></div><button class="btn" id="savepf">${icon("check")} Save</button></div>
-      <div class="card"><div class="card-head"><div><h2>Grading</h2><div class="sub">Grade scale for this section</div></div><button class="btn sm ghost" id="gsreset">${icon("refresh")} AIUB Default</button></div>
+      <div class="card"><div class="card-head"><div><h2>Grading</h2><div class="sub">Grade Scale for This Section</div></div><button class="btn sm ghost" id="gsreset">${icon("refresh")} AIUB Default</button></div>
         <div class="table-wrap"><table class="plan-table" id="gst"><thead><tr><th>Grade</th><th class="num">From (%)</th><th class="num">Grade Point</th><th></th></tr></thead><tbody>
           ${scale.map((g, i) => `<tr data-i="${i}"><td><input data-k="grade" value="${esc(g.grade)}" maxlength="3" style="width:70px" /></td><td><input data-k="min" type="number" min="0" max="100" value="${g.min}" style="width:90px" /></td>
             <td><input data-k="point" type="number" min="0" max="5" step="0.01" value="${(+g.point).toFixed(2)}" style="width:90px" /></td><td><button class="icon-btn danger" data-gsdel="${i}">${icon("trash")}</button></td></tr>`).join("")}</tbody></table></div>
@@ -1322,7 +1522,7 @@
   const coRow = (o, i) => `<div data-co="${i}" style="display:grid;gap:8px;padding:14px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border)">
       <div class="row center-y" style="gap:8px"><input data-k="code" value="${esc(o.code || "")}" placeholder="CO1" style="width:84px;font-weight:700" title="Code" />
         <input data-k="po" value="${esc(o.po || "")}" placeholder="PO (e.g. PO-c-1)" style="flex:1;min-width:110px" title="Program Outcome" />
-        <input data-k="level" value="${esc(o.level || "")}" placeholder="Level (e.g. C4)" style="flex:1;min-width:100px" title="Domain level" />
+        <input data-k="level" value="${esc(o.level || "")}" placeholder="Level (e.g. C4)" style="flex:1;min-width:100px" title="Domain Level" />
         <button class="icon-btn danger" data-codel="${i}" title="Remove">${icon("trash")}</button></div>
       <textarea data-k="statement" placeholder="Statement — what students will be able to do" style="min-height:64px">${esc(o.statement || "")}</textarea></div>`;
   function bindGrading() {
@@ -1340,24 +1540,27 @@
       if (!(await App.confirm("New codes for everyone?", "Every student in this section gets a new access code. The old codes stop working right away — download and share the new list.", "Make New Codes"))) return;
       try { const { data, error } = await sb.rpc("reset_access_codes", { p_section: sec.id }); if (error) throw error; App.toast(`${data} new access codes made`); } catch (x) { fail(x); } };
     const readScale = () => $$("#gst tbody tr").map((tr) => ({ grade: tr.querySelector("[data-k=grade]").value.trim(), min: +tr.querySelector("[data-k=min]").value, point: +tr.querySelector("[data-k=point]").value })).filter((g) => g.grade);
-    $("#gsreset").onclick = () => { sec.grade_scale = Grade.AIUB_SCALE.map((g) => ({ ...g })); tabSettings(); App.toast("AIUB scale loaded — press Save Grading"); };
+    $("#gsreset").onclick = () => { sec.grade_scale = Grade.AIUB_SCALE.map((g) => ({ ...g })); tabSettings(); App.toast("AIUB Scale Loaded — Press Save Grading"); };
     $("#gsadd").onclick = () => { sec.grade_scale = [...readScale(), { grade: "", min: 0, point: 0 }]; tabSettings(); };
     $$("[data-gsdel]").forEach((b) => (b.onclick = () => { const s = readScale(); s.splice(+b.dataset.gsdel, 1); sec.grade_scale = s; tabSettings(); }));
     $("#savegs").onclick = async () => { const s = readScale().sort((a, b) => b.min - a.min);
-      if (!s.length || !s.some((g) => g.min === 0)) return App.toast("The lowest grade must start at 0%", true);
-      try { await q(sb.from("sections").update({ grade_scale: s, round_total: $("#st_round").checked }).eq("id", sec.id)); sec.grade_scale = s; sec.round_total = $("#st_round").checked; drawSection(); App.toast("Grading saved"); } catch (x) { fail(x); } };
+      if (!s.length || !s.some((g) => g.min === 0)) return App.toast("The Lowest Grade Must Start at 0%", true);
+      try { await q(sb.from("sections").update({ grade_scale: s, round_total: $("#st_round").checked }).eq("id", sec.id)); sec.grade_scale = s; sec.round_total = $("#st_round").checked; drawSection(); App.toast("Grading Saved"); } catch (x) { fail(x); } };
     const readCos = () => $$("#colist [data-co]").map((r) => ({ code: r.querySelector("[data-k=code]").value.trim().toUpperCase(), statement: r.querySelector("[data-k=statement]").value.trim(), po: r.querySelector("[data-k=po]").value.trim(), level: r.querySelector("[data-k=level]").value.trim() })).filter((o) => o.code);
     $("#coadd").onclick = () => { const list = readCos(); list.push({ code: `CO${list.length + 1}`, statement: "" }); $("#colist").innerHTML = list.map(coRow).join(""); bindCoDel(); };
     const bindCoDel = () => $$("[data-codel]").forEach((b) => (b.onclick = () => { const list = readCos(); list.splice(+b.dataset.codel, 1); $("#colist").innerHTML = list.map(coRow).join(""); bindCoDel(); }));
     bindCoDel();
     $("#saveco").onclick = async () => { const upd = { cos: readCos(), credit_hours: $("#co_cr").value === "" ? null : +$("#co_cr").value, co_target: Math.max(0, Math.min(100, +$("#co_tg").value || 60)) };
-      try { await q(sb.from("courses").update(upd).eq("id", c.id)); Object.assign(c, upd); drawSection(); App.toast("Course outcomes saved"); } catch (x) { fail(x); } };
+      try { await q(sb.from("courses").update(upd).eq("id", c.id)); Object.assign(c, upd); drawSection(); App.toast("Course Outcomes Saved"); } catch (x) { fail(x); } };
   }
 
   // ------------------------------------------------------------------ router
   async function route() {
     closePop(); clearInterval(liveTimer);
-    if (!user) return renderLogin();
+    if (!user) return location.hash === "#/signup" ? renderSignup() : renderLogin();
+    if (!PROFILE) { try { await loadProfile(); } catch {} }
+    if (location.hash === "#/profile") { S = null; return renderProfile().catch(fail); }
+    if (location.hash === "#/signup") { location.hash = "#/"; return; }
     if (recovering) { recovering = false; await changePassword("Set a New Password"); }
     const m = location.hash.match(/^#\/section\/([0-9a-f-]{36})(?:\/(\w+))?/);
     try {
@@ -1379,6 +1582,7 @@
   sb.auth.onAuthStateChange((ev, session) => {
     if (ev === "PASSWORD_RECOVERY") recovering = true;
     const was = user?.id; user = session?.user || null;
+    if (was !== user?.id) PROFILE = null;
     if (was !== user?.id || ev === "PASSWORD_RECOVERY") route();
   });
   sb.auth.getSession().then(({ data }) => { user = data.session?.user || null; route(); });

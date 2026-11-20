@@ -763,3 +763,210 @@ do $$ begin
     insert into public.classfolio_migrations (name) values ('round_total_off');
   end if;
 end $$;
+
+-- =============================================================================
+--  PART 4 — Faculty accounts & profiles: sign-up with an @aiub.edu email,
+--  editable profile with photo, shown to students in the portal. Safe to re-run.
+-- =============================================================================
+create table if not exists public.faculty_profiles (
+  id                 uuid primary key default auth.uid(),            -- = the faculty member's login (auth.users.id)
+  full_name          text not null default '' check (length(full_name) <= 120),
+  designation        text check (designation is null or length(designation) <= 80),     -- e.g. Lecturer
+  department         text check (department is null or length(department) <= 120),
+  faculty_name       text check (faculty_name is null or length(faculty_name) <= 120),  -- e.g. Faculty of Science and Technology
+  email              text check (email is null or length(email) <= 160),
+  phone              text check (phone is null or length(phone) <= 40),                 -- private: never shown to students
+  room               text check (room is null or length(room) <= 80),
+  consultation       text check (consultation is null or length(consultation) <= 300),
+  bio                text check (bio is null or length(bio) <= 3000),
+  research_interests text[] not null default '{}',
+  education          jsonb not null default '[]'::jsonb,                                -- [{degree, institution, year}]
+  publications       jsonb not null default '[]'::jsonb,                                -- [{title, venue, year, url}]
+  links              jsonb not null default '{}'::jsonb,                                -- {website, scholar, researchgate, orcid, linkedin, github, ...}
+  photo_url          text check (photo_url is null or length(photo_url) <= 500),
+  aiub_profile_url   text check (aiub_profile_url is null or length(aiub_profile_url) <= 300),
+  updated_at         timestamptz not null default now()
+);
+alter table public.faculty_profiles enable row level security;
+drop policy if exists owner_all on public.faculty_profiles;
+create policy owner_all on public.faculty_profiles for all to authenticated
+  using (id = auth.uid()) with check (id = auth.uid());
+revoke all on public.faculty_profiles from anon;
+grant select, insert, update on public.faculty_profiles to authenticated;
+
+-- Which email domains may create a faculty account (add a row to allow another domain)
+create table if not exists public.signup_domains (domain text primary key);
+insert into public.signup_domains (domain) values ('aiub.edu') on conflict do nothing;
+alter table public.signup_domains enable row level security;
+revoke all on public.signup_domains from anon, authenticated;
+
+create or replace function public._check_signup_email() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.email is null or not exists (select 1 from signup_domains d where lower(new.email) like '%@' || lower(d.domain)) then
+    raise exception 'Please sign up with your official @aiub.edu email address.' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create or replace function public._create_faculty_profile() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into faculty_profiles (id, full_name, email)
+  values (new.id, left(coalesce(new.raw_user_meta_data ->> 'full_name', ''), 120), new.email)
+  on conflict (id) do nothing;
+  return new;
+end $$;
+revoke all on function public._check_signup_email() from public, anon, authenticated;
+revoke all on function public._create_faculty_profile() from public, anon, authenticated;
+
+do $$ begin
+  if exists (select 1 from information_schema.tables where table_schema = 'auth' and table_name = 'users') then
+    execute 'drop trigger if exists classfolio_check_email on auth.users';
+    execute 'create trigger classfolio_check_email before insert on auth.users for each row execute function public._check_signup_email()';
+    execute 'drop trigger if exists classfolio_new_profile on auth.users';
+    execute 'create trigger classfolio_new_profile after insert on auth.users for each row execute function public._create_faculty_profile()';
+    -- profiles for accounts that already exist
+    execute $b$insert into public.faculty_profiles (id, full_name, email)
+             select id, left(coalesce(raw_user_meta_data ->> 'full_name', ''), 120), email from auth.users on conflict (id) do nothing$b$;
+  end if;
+end $$;
+
+-- Profile pictures: public "avatars" bucket, each faculty member writes only inside their own folder
+do $$ begin
+  if exists (select 1 from information_schema.tables where table_schema = 'storage' and table_name = 'buckets') then
+    insert into storage.buckets (id, name, public) values ('avatars', 'avatars', true) on conflict (id) do update set public = true;
+    begin
+      update storage.buckets set file_size_limit = 2097152, allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp'] where id = 'avatars';
+    exception when undefined_column then null; end;
+    execute 'drop policy if exists "classfolio avatars insert" on storage.objects';
+    execute 'drop policy if exists "classfolio avatars update" on storage.objects';
+    execute 'drop policy if exists "classfolio avatars delete" on storage.objects';
+    execute $p$create policy "classfolio avatars insert" on storage.objects for insert to authenticated
+             with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text)$p$;
+    execute $p$create policy "classfolio avatars update" on storage.objects for update to authenticated
+             using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text)$p$;
+    execute $p$create policy "classfolio avatars delete" on storage.objects for delete to authenticated
+             using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text)$p$;
+  end if;
+end $$;
+
+-- portal_lookup + instructor name & photo
+create or replace function public.portal_lookup(p_student_id text)
+returns json language plpgsql security definer set search_path = public as $$
+declare v_id text := _norm_id(p_student_id); r json;
+begin
+  if length(v_id) = 0 or length(v_id) > 30 then
+    return json_build_object('ok', false, 'code', 'bad_id', 'message', 'Enter your Student ID.');
+  end if;
+  if not _portal_guard(v_id) then
+    return json_build_object('ok', false, 'code', 'rate', 'message', 'Too many look-ups from this connection. Please try again in an hour.');
+  end if;
+  select coalesce(json_agg(row_to_json(q) order by q.created_at desc), '[]'::json) into r from (
+    select se.public_token as token, co.code as course_code, co.title as course_title, co.credit_hours,
+           se.name as section, se.class_code, i.name as intake, coalesce(nullif(fp.full_name, ''), se.instructor) as instructor, fp.photo_url as instructor_photo, fp.designation as instructor_designation, se.portfolio_published as published,
+           se.portfolio_code_required as needs_code, se.created_at,
+           (select json_build_object('term', t.name, 'number', cl.number, 'title', cl.title, 'expires_at', cl.expires_at,
+                                     'status', (select a.status from attendance a where a.class_id = cl.id and a.student_id = v_id))
+              from classes cl join terms t on t.id = cl.term_id
+             where t.section_id = se.id and cl.is_open and cl.expires_at > now()
+             order by cl.expires_at desc limit 1) as active,
+           _student_summary(se.id, v_id) as summary
+      from students st join sections se on se.id = st.section_id
+      join courses co on co.id = se.course_id join intakes i on i.id = se.intake_id
+      left join faculty_profiles fp on fp.id = se.owner
+     where st.student_id = v_id) q;
+  if r::text = '[]' then
+    return json_build_object('ok', false, 'code', 'not_found', 'message', 'No courses were found for this Student ID. Check the ID and try again.');
+  end if;
+  return json_build_object('ok', true, 'student_id', v_id, 'sections', r);
+end $$;
+
+
+create or replace function public.portal_portfolio(p_token text, p_student_id text, p_code text default null)
+returns json language plpgsql security definer set search_path = public as $$
+declare v_id text := _norm_id(p_student_id); s record; st record; v_fail int;
+begin
+  if not _portal_guard(v_id) then
+    return json_build_object('ok', false, 'code', 'rate', 'message', 'Too many look-ups from this connection. Please try again in an hour.');
+  end if;
+  select se.id, se.owner, se.name, se.class_code, se.instructor, se.grade_scale, se.round_total, se.min_attendance_pct, se.portfolio_published,
+         se.portfolio_code_required, co.code, co.title, co.credit_hours, co.cos, co.co_target, i.name as intake into s
+    from sections se join courses co on co.id = se.course_id join intakes i on i.id = se.intake_id
+   where se.public_token = p_token;
+  if not found then return json_build_object('ok', false, 'code', 'invalid', 'message', 'This course could not be found.'); end if;
+  select special_grade, access_code into st from students where section_id = s.id and student_id = v_id;
+  if not found then return json_build_object('ok', false, 'code', 'not_enrolled', 'message', 'This Student ID is not on the list for this course.'); end if;
+  if not s.portfolio_published then
+    return json_build_object('ok', false, 'code', 'unpublished', 'message', 'Your instructor has not published the portfolio for this course yet.');
+  end if;
+  if s.portfolio_code_required then
+    select attempts into v_fail from portal_fail where section_id = s.id and student_id = v_id and last_at > now() - interval '1 hour';
+    if coalesce(v_fail, 0) >= 10 then
+      return json_build_object('ok', false, 'code', 'locked', 'message', 'Too many wrong access codes. Try again in an hour or ask your instructor.');
+    end if;
+    if p_code is null or upper(regexp_replace(p_code, '\s', '', 'g')) <> st.access_code then
+      if p_code is not null then
+        insert into portal_fail (section_id, student_id, attempts, last_at) values (s.id, v_id, 1, now())
+          on conflict (section_id, student_id) do update
+            set attempts = case when portal_fail.last_at < now() - interval '1 hour' then 1 else portal_fail.attempts + 1 end, last_at = now();
+      end if;
+      return json_build_object('ok', false, 'code', 'need_code',
+        'message', case when p_code is null then 'Enter the access code your instructor gave you.' else 'That access code is not correct.' end);
+    end if;
+    delete from portal_fail where section_id = s.id and student_id = v_id;
+  end if;
+  return json_build_object('ok', true,
+    'course', json_build_object('code', s.code, 'title', s.title, 'credit_hours', s.credit_hours, 'cos', s.cos, 'co_target', s.co_target),
+    'section', json_build_object('name', s.name, 'class_code', s.class_code, 'intake', s.intake, 'instructor', s.instructor,
+                                 'grade_scale', s.grade_scale, 'round_total', s.round_total, 'min_attendance_pct', s.min_attendance_pct),
+    'student', json_build_object('student_id', v_id, 'special_grade', st.special_grade),
+    'terms', (select coalesce(json_agg(json_build_object('id', t.id, 'name', t.name, 'weight', t.weight, 'sort', t.sort) order by t.sort, t.name), '[]'::json)
+                from terms t where t.section_id = s.id),
+    'assessments', (select coalesce(json_agg(json_build_object('id', a.id, 'term_id', a.term_id, 'name', a.name, 'grp', a.grp, 'rule', a.rule,
+                      'kind', a.kind, 'max_marks', a.max_marks, 'weight', a.weight, 'co', a.co, 'visible', a.visible, 'sort', a.sort) order by a.sort), '[]'::json)
+                from assessments a where a.section_id = s.id),
+    'marks', (select coalesce(json_object_agg(m.assessment_id, m.score), '{}'::json)
+                from marks m join assessments a on a.id = m.assessment_id
+               where a.section_id = s.id and a.visible and m.student_id = v_id and m.score is not null),
+    'averages', (select coalesce(json_object_agg(x.aid, x.av), '{}'::json) from (
+                   select a.id as aid, round(avg(m.score), 2) as av
+                     from assessments a join marks m on m.assessment_id = a.id and m.score is not null
+                     join students s2 on s2.section_id = a.section_id and s2.student_id = m.student_id
+                    where a.section_id = s.id and a.visible group by a.id) x),
+    'classes', (select coalesce(json_agg(json_build_object('term_id', cl.term_id, 'number', cl.number, 'date', cl.class_date,
+                   'held', (cl.opened_at is not null or exists (select 1 from attendance a where a.class_id = cl.id)),
+                   'status', (select a.status from attendance a where a.class_id = cl.id and a.student_id = v_id)) order by t.sort, cl.number), '[]'::json)
+                from classes cl join terms t on t.id = cl.term_id where t.section_id = s.id),
+    'faculty', (select json_build_object('name', coalesce(nullif(fp.full_name, ''), s.instructor), 'designation', fp.designation, 'department', fp.department,
+                   'faculty_name', fp.faculty_name, 'email', fp.email, 'room', fp.room, 'consultation', fp.consultation, 'bio', fp.bio,
+                   'research_interests', fp.research_interests, 'education', fp.education, 'publications', fp.publications, 'links', fp.links,
+                   'photo_url', fp.photo_url, 'aiub_profile_url', fp.aiub_profile_url)
+                  from faculty_profiles fp where fp.id = s.owner),
+    'group', (select json_build_object('name', g.name, 'title', g.title,
+                     'members', (select json_agg(gm2.student_id order by gm2.student_id) from group_members gm2 where gm2.group_id = g.id))
+                from group_members gm join groups g on g.id = gm.group_id where gm.section_id = s.id and gm.student_id = v_id limit 1)
+  );
+end $$;
+revoke all on function public.portal_portfolio(text, text, text) from public;
+grant execute on function public.portal_portfolio(text, text, text) to anon, authenticated;
+revoke all on function public.portal_lookup(text) from public;
+grant execute on function public.portal_lookup(text) to anon, authenticated;
+-- public instructor profile for a course the student is enrolled in (no marks, no phone)
+create or replace function public.portal_faculty(p_token text, p_student_id text)
+returns json language plpgsql security definer set search_path = public as $$
+declare v_id text := _norm_id(p_student_id); r json;
+begin
+  if not _portal_guard(v_id) then return json_build_object('ok', false, 'code', 'rate', 'message', 'Too many look-ups. Please try again in an hour.'); end if;
+  select json_build_object('ok', true, 'faculty', json_build_object(
+           'name', coalesce(nullif(fp.full_name, ''), se.instructor), 'designation', fp.designation, 'department', fp.department, 'faculty_name', fp.faculty_name,
+           'email', fp.email, 'room', fp.room, 'consultation', fp.consultation, 'bio', fp.bio, 'research_interests', fp.research_interests,
+           'education', fp.education, 'publications', fp.publications, 'links', fp.links, 'photo_url', fp.photo_url, 'aiub_profile_url', fp.aiub_profile_url),
+         'course', json_build_object('code', co.code, 'title', co.title, 'section', se.name)) into r
+    from sections se join courses co on co.id = se.course_id
+    join students st on st.section_id = se.id and st.student_id = v_id
+    left join faculty_profiles fp on fp.id = se.owner
+   where se.public_token = p_token;
+  return coalesce(r, json_build_object('ok', false, 'code', 'not_found', 'message', 'Instructor not found for this course.'));
+end $$;
+revoke all on function public.portal_faculty(text, text) from public;
+grant execute on function public.portal_faculty(text, text) to anon, authenticated;
