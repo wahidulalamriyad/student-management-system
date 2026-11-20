@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Attendance</title>
+  <link rel="stylesheet" href="assets/app.css" />
+  <script>
+    // Old or shortened links like ?s=<token> go straight to the student page
+    (function () { var s = new URLSearchParams(location.search).get("s"); if (s) location.replace("attend.html?s=" + encodeURIComponent(s)); })();
+  </script>
+</head>
+<body>
+  <div class="center-wrap"><div class="login"><div class="card" style="text-align:center">
+    <h1>Class Attendance</h1>
+    <p class="muted">Students: open the link your instructor shared for your section.</p>
+    <div style="height:10px"></div>
+    <a class="btn" href="admin.html">Faculty sign in ▸</a>
+  </div></div></div>
+</body>
+</html>
