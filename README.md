@@ -1,85 +1,102 @@
-# Class Attendance — rotating-PIN check-in
+# Student Management System — attendance, marks and portfolios
 
 > **© 2026 Wahidul Alam Riyad. All rights reserved.**
 > This software is proprietary. You may not copy, modify, redistribute, host, sell or use it, in whole or in part, without the author's prior written permission. See [LICENSE](LICENSE).
 
-A free, static web app for taking class attendance, with light and dark mode.
+A static web app for managing all your intakes, courses and sections, with light and dark mode. It brings together everything from the Portfolio Excel files and the Attendance Management System.
 
 - **Hosting:** the site runs on **GitHub Pages**.
-- **Database:** **Supabase** (free tier).
-- **How check-in works:** students open one fixed link for their section and type their **Student ID** and the **6-digit PIN on your screen**. The PIN changes every 15 seconds.
+- **Database:** **Supabase**.
+- **For faculty:** manage students, attendance, marks, groups, grades and course outcomes in one place.
+- **For students:** one link — the **Student Portal**. They type their Student ID to mark attendance with the PIN on your screen, and to see their portfolio once you publish it.
 
 ## Features
 
 **Faculty (`admin.html`)**
-- **Dashboard:**
-  - All your sections as cards, each with average attendance.
-  - Live "attendance is open" banners.
-  - Search and filter by intake.
-- **Intakes, courses and sections:**
-  - Intakes and courses can be added, renamed and deleted.
-  - A new section gets *Mid Term* and *Final Term* with as many classes as you choose. You can create a new intake or course from the same form.
+- **Dashboard:** every section as a card, with live "attendance is open" banners and an intake filter.
+- **Intakes & Courses:** add, rename and delete intakes and courses.
+- **New Section:** pick the intake, course, number of classes, instructor and an **assessment plan preset**.
 - **Overview tab:**
-  - Attendance-by-class chart.
-  - Distribution bands.
-  - The list of students **below the minimum %**, with a one-click "copy IDs".
-  - Counts of on-time, late, excused, PIN and manual records.
+  - Attendance by class and the students below the minimum attendance.
+  - A Marks & Grades summary.
 - **Classes tab:**
-  - Start, reopen or open the PIN screen for each class.
-  - Edit a class's date and topic.
-  - **Mark everyone present**, clear attendance, add or delete classes, and add, rename or delete terms.
+  - Start the PIN for any class, and edit its date and topic.
+  - Mark everyone present, add classes, and add, rename or delete terms.
 - **Students tab:**
-  - Upload the *Valid Student List* (.xlsx / .csv) and preview it before importing.
-  - Add or edit a single student.
-  - Search, filter (below %, 100%) and sort.
-  - Download the list or a template.
-  - Click a student to see their **attendance profile** and change any mark.
-- **Attendance sheet tab:**
-  - A grid of every student × class.
-  - Click a cell to mark **Present / Late / Excused / Absent**.
-  - Click a class number for bulk actions.
-  - Print.
-- **Check-in log tab:**
-  - Every record with time, status, PIN or manual source, and device.
-  - **Shared-device warnings** flag one phone checking in two students.
+  - Upload the Valid Student List, add or edit students, and search, filter and sort.
+  - Open each student's attendance record or full portfolio.
+- **Attendance tab:**
+  - The student × class sheet: click a cell to set Present / Late / Excused / Absent.
+  - Bulk actions per class, and a print view.
+- **Marks tab:**
+  - A spreadsheet-style gradebook per term, with live totals and grades.
+  - **Saves by itself** as you type.
+  - Keyboard navigation: Enter moves down, and the arrow keys move between cells.
+  - **Paste a block of marks straight from Excel.**
+  - Checks every mark against its full mark.
+  - Download and upload a marks sheet.
+- **Assessment Plan:**
+  - Items, groups, full marks, weights and COs.
+  - Group rules: Add Up (exam parts and rubric criteria), Best One (quizzes) or Average.
+  - Attendance items are filled in automatically.
+  - Group-marked items and a Hidden-from-students switch.
+  - Term weights: Mid 40% / Final 60%.
+  - Presets matching your portfolios:
+    - **Web Technologies (CSC 3215)**: Quiz best of 2, Project Prototype, Analytical / Short / Code exam parts.
+    - **Theory of Computation (CSC 3113)**: exams marked out of 100 and converted to 60, with rubric criteria for the CO questions.
+    - **Data Structure Lab (CSC 2107)**: Lab Task, Assignment & Viva, Lab Exam.
+    - A standard theory course and a standard lab course.
+- **Groups tab:**
+  - Project groups, up to 10 groups (11 when there are more than 40 students).
+  - A student can only be in one group, and the same groups are used for every term.
+  - Auto-create groups by list order or at random.
+  - **One mark per group** for group items — every member gets it.
+- **Results tab:**
+  - Term totals, grand total, the **current standing** while marks are still coming in, final grade and grade point.
+  - Attendance and COs attained, plus special grades (I / W / UW).
+  - Grade distribution and **CO attainment**.
+  - Publish portfolios to students with one switch.
 - **Settings tab:**
-  - **Late after N minutes**.
-  - **Minimum attendance %**.
-  - One-device-per-class rule.
-  - Regenerate the student link.
-  - Delete the section, which requires typing the section name to confirm.
-- **Excel export:** Info, Summary, one sheet per term (1/0, ready for the Portfolio), Detail (P/L/E/A), Classes, Check-in Log.
-- **Account:** change your password, and recover it by email.
+  - Late-after, minimum attendance and the one-device rule.
+  - Instructor name and portfolio publishing.
+  - The **grade scale** (AIUB default) and rounding.
+  - **Course outcomes**: statement, PO, level, target % and credit hours.
+- **Check-In Log tab:** every record, with shared-device warnings.
+- **Excel export:** Info, Summary, Results, Marks per term, Groups, Attendance per term (1/0, ready for the Portfolio), Detail (P/L/E/A), Classes, Check-in Log.
 
 **Classroom PIN screen (`pin.html`)**
-- **The PIN:** large digits that flip when the PIN changes, with a countdown bar.
-- **Joining:** a QR code for the student link.
-- **Live progress:** a ring with present / enrolled, a late counter and a live check-in feed.
-- **Controls:**
-  - Choose the session length (3–30 min), then **+5 min** or **End**.
-  - **Full screen** with the `F` key; hide the side panel with the `H` key.
-  - A "Next class" button.
+- **The PIN:** six large digits that flip when the PIN changes every 15 seconds, with a countdown.
+- **Joining:** a QR code for the Student Portal.
+- **Live progress:** the present / enrolled count, a late counter and a live feed of check-ins.
+- **Controls:** +5 min, End, Full screen (`F`) and hide the side panel (`H`).
 
-**Students (`attend.html`)**
-- **Status:** shows whether attendance is open, with a countdown to closing.
-- **Entering the PIN:** six digit boxes with auto-advance and paste support. The form submits by itself when all 6 digits are typed.
-- **Confirmation:** an on-time / late badge, and the student's **own attendance %** so far. This is shown only after a valid PIN check-in, so nobody can look up another student by ID.
+**Student Portal (`index.html`)**
+- **Find my courses:** type the Student ID to see every course and section the student is in, with their attendance %.
+- **Check in:** when any of their classes is open, a PIN box appears. The student types the PIN once, and it is checked against all their open classes.
+- **My Portfolio** (after you publish):
+  - Grand total, current standing and grade.
+  - Every assessment with marks, weighted marks and the section average.
+  - Course outcome attainment and attendance per class.
+  - Their project group and the grading scale.
+  - A print option.
+- **Privacy:** student names are never shown in the portal, and hidden items stay hidden.
 
 **Integrity**
-- One record per student per class.
-- The ID must be on your uploaded list.
+- One attendance record per student per class.
+- The ID must be on your list.
 - 5 wrong PINs lock that ID for the class.
 - One device per student per class (optional).
-- The PIN is made on the server, and the current and previous PIN are accepted.
+- The PIN is made on the server.
+- Each faculty account sees only its own data.
 
 ---
 
 ## Day-to-day use
 
 1. **Start of semester:**
-   1. Click **New section**.
-   2. Open **Students ▸ Upload list**.
-   3. Share the **Student link** (copy it, or show the QR code) once with the class.
+   1. Click **New Section** and choose your course's assessment plan.
+   2. Open **Students ▸ Upload List**.
+   3. Share the **Student Portal** link (copy it, or show the QR code) once. It is the same link for every course.
 2. **Each class:** click **Start Class-NN** at the top of the section. That opens the PIN screen. Press **Start attendance**.
    - Students open the link and type their ID and the PIN.
    - Press **End** when done.
@@ -87,6 +104,10 @@ A free, static web app for taking class attendance, with light and dark mode.
    - **Late** and **Excused** both count as attended.
    - **Absent** removes the record.
 4. **At-risk students:** check the **Overview** tab to see who is below your minimum.
+5. **Marks:**
+   1. In the **Marks** tab, type or paste marks for each term. They save by themselves.
+   2. Give group project marks in the **Groups** tab.
+   3. When you're ready, switch on **Show to Students** in the **Results** tab. Students then see their portfolio in the Student Portal.
 
 ### Export and merge into the Portfolio
 Click **Export Excel**. Each term sheet has `Student ID | Student Name | Class-01 … Class-NN | Present | Classes Held | Attendance %`.

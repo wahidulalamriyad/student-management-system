@@ -10,17 +10,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" />
   <link rel="stylesheet" href="assets/app.css" />
-  <title>Class Attendance</title>
-  <script>(function(){var s=new URLSearchParams(location.search).get("s");if(s)location.replace("attend.html?s="+encodeURIComponent(s));})();</script>
+  
+  <title>Student Portal — Attendance & Portfolio</title>
+  <script>(function(){if(new URLSearchParams(location.search).get("s"))history.replaceState(null,"",location.pathname);})();</script>
 </head>
 <body>
-  <div class="corner"><button class="theme-btn" onclick="var d=document.documentElement,t=d.dataset.theme==='dark'?'light':'dark';d.dataset.theme=t;try{localStorage.setItem('att_theme',t)}catch(e){}" aria-label="Switch light or dark mode">
-    <svg class="i moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><svg class="i sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button></div>
-  <div class="center-wrap" style="min-height:100vh"><div class="login"><div class="card center">
-    <div class="logo-lg" style="margin:0 auto 22px"><svg class="i" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
-    <h1>Class Attendance</h1>
-    <p class="muted" style="margin:10px 0 26px">Students: open the attendance link your instructor shared for your section.</p>
-    <a class="btn lg block" href="admin.html">Faculty Sign In</a>
-  </div></div></div>
+  <div id="app"><div class="loading"><span class="spinner"></span> Loading…</div></div>
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="assets/common.js"></script>
+  <script src="assets/portfolio.js"></script>
+  <script src="assets/portal.js"></script>
 </body>
 </html>

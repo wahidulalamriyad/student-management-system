@@ -384,3 +384,218 @@ grant execute on function public.close_class(uuid)                     to authen
 grant execute on function public.current_pin(uuid)                     to authenticated;
 grant execute on function public.get_section_public(text)              to anon, authenticated;
 grant execute on function public.submit_attendance(text, text, text, text) to anon, authenticated;
+
+-- =============================================================================
+--  PART 2 — Student Management: course outcomes, assessment plan, marks,
+--  project groups, grading and the student portal. Safe to re-run.
+-- =============================================================================
+alter table public.courses  add column if not exists credit_hours numeric(3,1);
+alter table public.courses  add column if not exists cos jsonb not null default '[]'::jsonb;      -- [{code, statement, po, level}]
+alter table public.courses  add column if not exists co_target int not null default 60 check (co_target between 0 and 100);
+alter table public.sections add column if not exists instructor text check (instructor is null or length(instructor) <= 120);
+alter table public.sections add column if not exists portfolio_published boolean not null default false;
+alter table public.sections add column if not exists round_total boolean not null default true;
+alter table public.sections add column if not exists grade_scale jsonb not null default
+  '[{"min":90,"grade":"A+","point":4.00},{"min":85,"grade":"A","point":3.75},{"min":80,"grade":"B+","point":3.50},
+    {"min":75,"grade":"B","point":3.25},{"min":70,"grade":"C+","point":3.00},{"min":65,"grade":"C","point":2.75},
+    {"min":60,"grade":"D+","point":2.50},{"min":50,"grade":"D","point":2.25},{"min":0,"grade":"F","point":0}]'::jsonb;
+alter table public.terms    add column if not exists weight numeric(5,2) check (weight is null or weight between 0 and 100);
+alter table public.students add column if not exists special_grade text check (special_grade is null or special_grade in ('I', 'W', 'UW'));
+
+create table if not exists public.assessments (
+  id         uuid primary key default gen_random_uuid(),
+  owner      uuid not null default auth.uid(),
+  section_id uuid not null references public.sections(id) on delete cascade,
+  term_id    uuid not null references public.terms(id) on delete cascade,
+  name       text not null check (length(name) between 1 and 80),          -- e.g. Quiz 1, Criterion 1
+  grp        text check (grp is null or length(grp) <= 80),                -- e.g. Quiz, Term Exam
+  rule       text not null default 'sum' check (rule in ('sum', 'best', 'avg')),
+  kind       text not null default 'marks' check (kind in ('marks', 'attendance')),
+  max_marks  numeric(6,2) not null default 10 check (max_marks > 0),
+  weight     numeric(6,2) not null default 10 check (weight between 0 and 100),   -- % of the term total
+  co         text check (co is null or length(co) <= 10),
+  by_group   boolean not null default false,
+  visible    boolean not null default true,
+  sort       int not null default 0,
+  created_at timestamptz not null default now()
+);
+create table if not exists public.marks (
+  id            bigint generated always as identity primary key,
+  owner         uuid not null default auth.uid(),
+  assessment_id uuid not null references public.assessments(id) on delete cascade,
+  student_id    text not null,
+  score         numeric(6,2) check (score is null or score >= 0),
+  updated_at    timestamptz not null default now(),
+  unique (assessment_id, student_id)
+);
+create table if not exists public.groups (
+  id         uuid primary key default gen_random_uuid(),
+  owner      uuid not null default auth.uid(),
+  section_id uuid not null references public.sections(id) on delete cascade,
+  name       text not null check (length(name) between 1 and 40),
+  title      text check (title is null or length(title) <= 160),
+  sort       int not null default 0,
+  created_at timestamptz not null default now(),
+  unique (section_id, name)
+);
+create table if not exists public.group_members (
+  id         bigint generated always as identity primary key,
+  owner      uuid not null default auth.uid(),
+  group_id   uuid not null references public.groups(id) on delete cascade,
+  section_id uuid not null references public.sections(id) on delete cascade,
+  student_id text not null,
+  unique (section_id, student_id)                                          -- a student is in one group per section
+);
+create index if not exists assessments_section_idx on public.assessments (section_id);
+create index if not exists marks_assessment_idx    on public.marks (assessment_id);
+create index if not exists groups_section_idx      on public.groups (section_id);
+create index if not exists group_members_group_idx on public.group_members (group_id);
+create index if not exists students_sid_idx        on public.students (student_id);
+
+alter table public.assessments   enable row level security;
+alter table public.marks         enable row level security;
+alter table public.groups        enable row level security;
+alter table public.group_members enable row level security;
+do $$
+declare t text;
+begin
+  foreach t in array array['assessments','marks','groups','group_members'] loop
+    execute format('drop policy if exists owner_all on public.%I', t);
+  end loop;
+end $$;
+create policy owner_all on public.assessments for all to authenticated
+  using (owner = auth.uid())
+  with check (owner = auth.uid()
+              and exists (select 1 from public.terms t join public.sections s on s.id = t.section_id
+                          where t.id = term_id and s.id = section_id and s.owner = auth.uid()));
+create policy owner_all on public.marks for all to authenticated
+  using (owner = auth.uid())
+  with check (owner = auth.uid() and exists (select 1 from public.assessments a where a.id = assessment_id and a.owner = auth.uid()));
+create policy owner_all on public.groups for all to authenticated
+  using (owner = auth.uid())
+  with check (owner = auth.uid() and exists (select 1 from public.sections s where s.id = section_id and s.owner = auth.uid()));
+create policy owner_all on public.group_members for all to authenticated
+  using (owner = auth.uid())
+  with check (owner = auth.uid() and exists (select 1 from public.groups g where g.id = group_id and g.section_id = section_id and g.owner = auth.uid()));
+revoke all on public.assessments, public.marks, public.groups, public.group_members from anon;
+grant select, insert, update, delete on public.assessments, public.marks, public.groups, public.group_members to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+
+-- -----------------------------------------------------------------------------
+--  Student portal (no login): look up by Student ID, view portfolio, check in
+-- -----------------------------------------------------------------------------
+create or replace function public._norm_id(p text) returns text language sql immutable as
+$$ select upper(regexp_replace(coalesce(p, ''), '\s', '', 'g')) $$;
+
+create or replace function public.portal_lookup(p_student_id text)
+returns json language plpgsql stable security definer set search_path = public as $$
+declare v_id text := _norm_id(p_student_id); r json;
+begin
+  if length(v_id) = 0 or length(v_id) > 30 then
+    return json_build_object('ok', false, 'code', 'bad_id', 'message', 'Enter your Student ID.');
+  end if;
+  select coalesce(json_agg(row_to_json(q) order by q.created_at desc), '[]'::json) into r from (
+    select se.public_token as token, co.code as course_code, co.title as course_title, co.credit_hours,
+           se.name as section, se.class_code, i.name as intake, se.instructor, se.portfolio_published as published, se.created_at,
+           (select json_build_object('term', t.name, 'number', cl.number, 'title', cl.title, 'expires_at', cl.expires_at,
+                                     'status', (select a.status from attendance a where a.class_id = cl.id and a.student_id = v_id))
+              from classes cl join terms t on t.id = cl.term_id
+             where t.section_id = se.id and cl.is_open and cl.expires_at > now()
+             order by cl.expires_at desc limit 1) as active,
+           _student_summary(se.id, v_id) as summary
+      from students st join sections se on se.id = st.section_id
+      join courses co on co.id = se.course_id join intakes i on i.id = se.intake_id
+     where st.student_id = v_id) q;
+  if r::text = '[]' then
+    return json_build_object('ok', false, 'code', 'not_found', 'message', 'No courses were found for this Student ID. Check the ID and try again.');
+  end if;
+  return json_build_object('ok', true, 'student_id', v_id, 'sections', r);
+end $$;
+
+create or replace function public.portal_portfolio(p_token text, p_student_id text)
+returns json language plpgsql stable security definer set search_path = public as $$
+declare v_id text := _norm_id(p_student_id); s record; v_special text;
+begin
+  select se.id, se.name, se.class_code, se.instructor, se.grade_scale, se.round_total, se.min_attendance_pct, se.portfolio_published,
+         co.code, co.title, co.credit_hours, co.cos, co.co_target, i.name as intake into s
+    from sections se join courses co on co.id = se.course_id join intakes i on i.id = se.intake_id
+   where se.public_token = p_token;
+  if not found then return json_build_object('ok', false, 'code', 'invalid', 'message', 'This course could not be found.'); end if;
+  select special_grade into v_special from students where section_id = s.id and student_id = v_id;
+  if not found then return json_build_object('ok', false, 'code', 'not_enrolled', 'message', 'This Student ID is not on the list for this course.'); end if;
+  if not s.portfolio_published then
+    return json_build_object('ok', false, 'code', 'unpublished', 'message', 'Your instructor has not published the portfolio for this course yet.');
+  end if;
+  return json_build_object('ok', true,
+    'course', json_build_object('code', s.code, 'title', s.title, 'credit_hours', s.credit_hours, 'cos', s.cos, 'co_target', s.co_target),
+    'section', json_build_object('name', s.name, 'class_code', s.class_code, 'intake', s.intake, 'instructor', s.instructor,
+                                 'grade_scale', s.grade_scale, 'round_total', s.round_total, 'min_attendance_pct', s.min_attendance_pct),
+    'student', json_build_object('student_id', v_id, 'special_grade', v_special),
+    'terms', (select coalesce(json_agg(json_build_object('id', t.id, 'name', t.name, 'weight', t.weight, 'sort', t.sort) order by t.sort, t.name), '[]'::json)
+                from terms t where t.section_id = s.id),
+    'assessments', (select coalesce(json_agg(json_build_object('id', a.id, 'term_id', a.term_id, 'name', a.name, 'grp', a.grp, 'rule', a.rule,
+                      'kind', a.kind, 'max_marks', a.max_marks, 'weight', a.weight, 'co', a.co, 'visible', a.visible, 'sort', a.sort) order by a.sort), '[]'::json)
+                from assessments a where a.section_id = s.id),
+    'marks', (select coalesce(json_object_agg(m.assessment_id, m.score), '{}'::json)
+                from marks m join assessments a on a.id = m.assessment_id
+               where a.section_id = s.id and a.visible and m.student_id = v_id and m.score is not null),
+    'averages', (select coalesce(json_object_agg(x.aid, x.av), '{}'::json) from (
+                   select a.id as aid, round(avg(m.score), 2) as av
+                     from assessments a join marks m on m.assessment_id = a.id and m.score is not null
+                     join students st on st.section_id = a.section_id and st.student_id = m.student_id
+                    where a.section_id = s.id and a.visible group by a.id) x),
+    'classes', (select coalesce(json_agg(json_build_object('term_id', cl.term_id, 'number', cl.number, 'date', cl.class_date,
+                   'held', (cl.opened_at is not null or exists (select 1 from attendance a where a.class_id = cl.id)),
+                   'status', (select a.status from attendance a where a.class_id = cl.id and a.student_id = v_id)) order by t.sort, cl.number), '[]'::json)
+                from classes cl join terms t on t.id = cl.term_id where t.section_id = s.id),
+    'group', (select json_build_object('name', g.name, 'title', g.title,
+                     'members', (select json_agg(gm2.student_id order by gm2.student_id) from group_members gm2 where gm2.group_id = g.id))
+                from group_members gm join groups g on g.id = gm.group_id where gm.section_id = s.id and gm.student_id = v_id limit 1)
+  );
+end $$;
+
+-- one place for students to check in: finds the open class in any of their sections
+create or replace function public.portal_checkin(p_student_id text, p_pin text, p_device text default null)
+returns json language plpgsql security definer set search_path = public, extensions as $$
+declare
+  v_id text := _norm_id(p_student_id);
+  v_pin text := regexp_replace(coalesce(p_pin, ''), '\D', '', 'g');
+  c record; v_secret bytea; v_step bigint; n_open int := 0; v_fail int := 0; res jsonb;
+begin
+  if length(v_id) = 0 or length(v_id) > 30 then return json_build_object('ok', false, 'code', 'bad_id', 'message', 'Enter your Student ID.'); end if;
+  if length(v_pin) <> 6 then return json_build_object('ok', false, 'code', 'bad_pin', 'message', 'The PIN has 6 digits.'); end if;
+  v_step := _pin_step();
+  for c in select cl.id as class_id, se.public_token as token, co.code, co.title
+             from students st join sections se on se.id = st.section_id join courses co on co.id = se.course_id
+             join terms t on t.section_id = se.id join classes cl on cl.term_id = t.id
+            where st.student_id = v_id and cl.is_open and cl.expires_at > now() loop
+    n_open := n_open + 1;
+    select secret into v_secret from class_secrets where class_id = c.class_id;
+    if exists (select 1 from attendance where class_id = c.class_id and student_id = v_id)
+       or (v_secret is not null and (v_pin = _pin_for(v_secret, v_step) or v_pin = _pin_for(v_secret, v_step - 1))) then
+      res := submit_attendance(c.token, v_id, v_pin, p_device)::jsonb;
+      return (res || jsonb_build_object('course_code', c.code, 'course_title', c.title))::json;
+    end if;
+  end loop;
+  if n_open = 0 then
+    return json_build_object('ok', false, 'code', 'closed', 'message', 'None of your classes is taking attendance right now.');
+  end if;
+  for c in select cl.id as class_id
+             from students st join terms t on t.section_id = st.section_id join classes cl on cl.term_id = t.id
+            where st.student_id = v_id and cl.is_open and cl.expires_at > now() loop
+    insert into failed_attempts (class_id, student_id, attempts, last_at) values (c.class_id, v_id, 1, now())
+      on conflict (class_id, student_id) do update set attempts = failed_attempts.attempts + 1, last_at = now()
+      returning greatest(attempts, v_fail) into v_fail;
+  end loop;
+  if v_fail >= 5 then
+    return json_build_object('ok', false, 'code', 'locked', 'message', 'Too many wrong PINs. Ask your instructor to mark you.');
+  end if;
+  return json_build_object('ok', false, 'code', 'wrong_pin', 'message', format('Wrong or expired PIN. Check the screen and try again (%s left).', 5 - v_fail));
+end $$;
+
+revoke all on function public.portal_lookup(text)                 from public;
+revoke all on function public.portal_portfolio(text, text)        from public;
+revoke all on function public.portal_checkin(text, text, text)    from public;
+grant execute on function public.portal_lookup(text)              to anon, authenticated;
+grant execute on function public.portal_portfolio(text, text)     to anon, authenticated;
+grant execute on function public.portal_checkin(text, text, text) to anon, authenticated;

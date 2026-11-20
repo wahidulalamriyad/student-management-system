@@ -29,7 +29,7 @@
   function topbar() {
     const name = user?.email || "";
     return `<header class="topbar">
-      <a class="brand" href="#/"><div class="logo">${icon("logo")}</div><div><div class="t1">Attendance Manager</div><div class="t2">${esc(cfg.INSTITUTION || "")}</div></div></a>
+      <a class="brand" href="#/"><div class="logo">${icon("logo")}</div><div><div class="t1">Student Management</div><div class="t2">${esc(cfg.INSTITUTION || "")}</div></div></a>
       <div class="spacer"></div>
       <a class="btn ghost sm" href="#/setup" title="Intakes & Courses">${icon("layers")}<span class="hide-sm">Intakes & Courses</span></a>
       ${App.theme.button()}
@@ -79,7 +79,7 @@
   function renderLogin(msg = "", email = "") {
     root.innerHTML = `<div class="corner">${App.theme.button()}</div><div class="center-wrap" style="min-height:100vh"><div class="login">
       <div class="card"><div class="logo-lg">${icon("logo")}</div>
-      <h1>Welcome Back</h1><p class="muted" style="margin:6px 0 26px">Sign in to manage attendance${cfg.INSTITUTION ? ` · ${esc(cfg.INSTITUTION)}` : ""}</p>
+      <h1>Welcome Back</h1><p class="muted" style="margin:6px 0 26px">Sign in to manage students, marks and attendance${cfg.INSTITUTION ? ` · ${esc(cfg.INSTITUTION)}` : ""}</p>
       <form id="lf"><label for="em">Email</label><input id="em" type="email" autocomplete="username" value="${esc(email)}" required />
       <div class="field-gap"></div><label for="pw">Password</label>
       <div class="search"><input id="pw" type="password" autocomplete="current-password" required style="padding-left:13px;padding-right:44px" />
@@ -107,7 +107,7 @@
     const [intakes, courses, sections, terms, classes, students, att] = await Promise.all([
       q(sb.from("intakes").select("*").order("created_at", { ascending: false })),
       q(sb.from("courses").select("*").order("code")),
-      q(sb.from("sections").select("id, name, class_code, created_at, min_attendance_pct, intake:intakes(id, name), course:courses(id, code, title)").order("created_at", { ascending: false })),
+      q(sb.from("sections").select("id, name, class_code, created_at, min_attendance_pct, portfolio_published, intake:intakes(id, name), course:courses(id, code, title)").order("created_at", { ascending: false })),
       App.fetchAll(() => sb.from("terms").select("id, section_id")),
       App.fetchAll(() => sb.from("classes").select("id, term_id, number, opened_at, is_open, expires_at")),
       App.fetchAll(() => sb.from("students").select("section_id")),
@@ -160,7 +160,7 @@
           <div class="top"><div class="grow"><div class="code">${esc(s.course.code)}${s.class_code ? ` · ${esc(s.class_code)}` : ""}</div><div class="title">${esc(s.course.title)}</div></div>
             <div class="sec-letter" title="Section">${esc(s.name)}</div></div>
           <div class="meta"><span>${icon("calendar")} ${esc(s.intake.name)}</span><span>${icon("users")} ${x.students} students</span><span>${icon("check")} ${x.held}/${x.classes} held</span></div>
-          <div class="foot">${x.open ? `<span class="badge green"><span class="dot"></span> Open Now</span>` : ""}
+          <div class="foot">${x.open ? `<span class="badge green"><span class="dot"></span> Open Now</span>` : s.portfolio_published ? `<span class="badge blue" title="Portfolio published">${icon("eye")}</span>` : ""}
             ${App.progress(x.avg, s.min_attendance_pct)}<b class="${App.pctClass(x.avg, s.min_attendance_pct)}">${x.avg == null ? "—" : x.avg + "%"}</b></div></a>`; }).join("")}</div>
       <div class="empty hidden" id="noresult"><h3>No Matching Sections</h3><p>Try a different search or intake.</p></div>`
       : `<div class="card"><div class="empty"><div class="ic">${icon("zap")}</div><h3>Let's Set Up Your First Section</h3>
@@ -189,7 +189,9 @@
         <div><label>Section</label><input id="ns_nm" placeholder="e.g. R" maxlength="20" /></div>
         <div><label>Class Code <span class="faint">(optional)</span></label><input id="ns_code" placeholder="e.g. 01553" maxlength="20" /></div>
         <div><label>Classes per Term</label><input id="ns_n" type="number" min="0" max="60" value="12" /><p class="hint">A <b>Mid Term</b> and a <b>Final Term</b> are created with this many classes each.</p></div>
-        <div><label>Minimum Attendance</label><input id="ns_min" type="number" min="0" max="100" value="80" /><p class="hint">Students below this % are flagged as at risk.</p></div></div>`,
+        <div><label>Minimum Attendance</label><input id="ns_min" type="number" min="0" max="100" value="80" /><p class="hint">Students below this % are flagged as at risk.</p></div>
+        <div><label>Instructor <span class="faint">(shown to students)</span></label><input id="ns_ins" maxlength="120" value="${esc((() => { try { return localStorage.getItem("att_instructor") || ""; } catch { return ""; } })())}" placeholder="e.g. Wahidul Alam Riyad" /></div>
+        <div><label>Assessment Plan</label><select id="ns_plan"><option value="">Set up later</option>${Object.entries(Grade.PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.label)}</option>`).join("")}</select><p class="hint">Quizzes, exams, weights and COs — editable later.</p></div></div>`,
       validate: (m) => {
         if (m.querySelector("#ns_in").value === "__new" && !m.querySelector("#ns_in_new").value.trim()) return "Type the new intake name.";
         if (m.querySelector("#ns_co").value === "__new" && (!m.querySelector("#ns_cc").value.trim() || !m.querySelector("#ns_ct").value.trim())) return "Type the new course code and title.";
@@ -201,11 +203,18 @@
       let intakeId = v("#ns_in"), courseId = v("#ns_co");
       if (intakeId === "__new") intakeId = (await q(sb.from("intakes").insert({ name: v("#ns_in_new") }).select().single())).id;
       if (courseId === "__new") courseId = (await q(sb.from("courses").insert({ code: v("#ns_cc"), title: v("#ns_ct") }).select().single())).id;
-      const sec = await q(sb.from("sections").insert({ intake_id: intakeId, course_id: courseId, name: v("#ns_nm"), class_code: v("#ns_code") || null,
+      const ins = v("#ns_ins"); try { localStorage.setItem("att_instructor", ins); } catch {}
+      const sec = await q(sb.from("sections").insert({ intake_id: intakeId, course_id: courseId, name: v("#ns_nm"), class_code: v("#ns_code") || null, instructor: ins || null,
         min_attendance_pct: Math.max(0, Math.min(100, +v("#ns_min") || 80)) }).select().single());
-      const n = Math.max(0, Math.min(60, +v("#ns_n") || 0));
-      const terms = await q(sb.from("terms").insert([{ section_id: sec.id, name: "Mid Term", sort: 1 }, { section_id: sec.id, name: "Final Term", sort: 2 }]).select());
+      const n = Math.max(0, Math.min(60, +v("#ns_n") || 0)), pre = Grade.PRESETS[v("#ns_plan")];
+      const terms = (await q(sb.from("terms").insert([{ section_id: sec.id, name: "Mid Term", sort: 1, weight: pre ? pre.termWeights[0] : 40 }, { section_id: sec.id, name: "Final Term", sort: 2, weight: pre ? pre.termWeights[1] : 60 }]).select())).sort((a, b) => a.sort - b.sort);
       if (n) await q(sb.from("classes").insert(terms.flatMap((t) => Array.from({ length: n }, (_, k) => ({ term_id: t.id, number: k + 1 })))));
+      if (pre) {
+        await q(sb.from("assessments").insert(pre.plan.map((x, i) => ({ section_id: sec.id, term_id: terms[x.term].id, name: x.name, grp: x.grp || null, rule: x.rule || "sum", kind: x.kind || "marks",
+          max_marks: x.max_marks, weight: x.weight, co: x.co || null, by_group: !!x.by_group, visible: true, sort: i + 1 }))));
+        const course = (await q(sb.from("courses").select("id, cos").eq("id", courseId).single()));
+        if (pre.cos.length && !(course.cos || []).length) await q(sb.from("courses").update({ cos: pre.cos }).eq("id", courseId));
+      }
       App.toast("Section created — now upload the student list"); go(`#/section/${sec.id}/students`);
     } catch (x) { fail(x); }
     // reveal "new" fields
@@ -261,14 +270,14 @@
   let S = null;              // current section data
   const UI = {};             // per-section view state (search, filters)
   async function loadSection(id) {
-    const sec = await q(sb.from("sections").select("*, intake:intakes(id, name), course:courses(id, code, title)").eq("id", id).single());
+    const sec = await q(sb.from("sections").select("*, intake:intakes(id, name), course:courses(*)").eq("id", id).single());
     const terms = await q(sb.from("terms").select("*").eq("section_id", id).order("sort").order("name"));
     const termIds = terms.map((t) => t.id);
     const classes = termIds.length ? await App.fetchAll(() => sb.from("classes").select("*").in("term_id", termIds).order("number")) : [];
     const students = (await App.fetchAll(() => sb.from("students").select("*").eq("section_id", id).order("seq").order("student_id"))).map(properStu);
-    S = { sec, terms, classes, students, att: [], byClass: {} };
-    await loadAttendance();
-    UI[id] ||= { q: "", filter: "all", sort: "seq", term: "", logClass: "", logSrc: "", riskOnly: false };
+    S = { sec, terms, classes, students, att: [], byClass: {}, assess: [], marks: {}, groups: [], members: [] };
+    await Promise.all([loadAttendance(), loadMarks(), loadGroups()]);
+    UI[id] ||= { q: "", filter: "all", sort: "seq", term: "", logClass: "", logSrc: "", riskOnly: false, mterm: "", rsort: "seq" };
   }
   const properStu = (s) => ((s.name = App.nameCase(s.name)), s);
   async function loadAttendance() {
@@ -310,12 +319,14 @@
     const open = classes.find(isOpen), openTerm = open && S.terms.find((t) => t.id === open.term_id);
     const nextC = open || S.terms.flatMap((t) => t.classes).find((c) => !isHeld(c));
     const scrollY = scrollY_(), wrapScroll = $(".table-wrap.keep") ? [$(".table-wrap.keep").scrollLeft, $(".table-wrap.keep").scrollTop] : null;
-    const tabs = [["overview", "Overview", "chart"], ["classes", "Classes", "calendar", classes.length], ["students", "Students", "users", students.length], ["sheet", "Attendance Sheet", "grid"], ["log", "Check-In Log", "list", S.att.length], ["settings", "Settings", "settings"]];
+    const tabs = [["overview", "Overview", "chart"], ["classes", "Classes", "calendar", classes.length], ["students", "Students", "users", students.length], ["sheet", "Attendance", "grid"],
+      ["marks", "Marks", "book", S.assess.length || null], ["groups", "Groups", "layers", S.groups.length || null], ["results", "Results", "target"], ["log", "Check-In Log", "list", S.att.length], ["settings", "Settings", "settings"]];
     page(`<div class="crumbs"><a href="#/">${icon("back")} All Sections</a></div>
       <div class="page-head"><div><div class="eyebrow"><span class="badge blue">${esc(sec.course.code)}</span>${sec.class_code ? `<span>Class Code ${esc(sec.class_code)}</span><span>·</span>` : ""}<span>${esc(sec.intake.name)}</span></div>
         <h1>${esc(sec.course.title)} <span class="muted" style="font-weight:600">· Section ${esc(sec.name)}</span></h1></div>
-        <div class="actions"><button class="btn secondary" id="share">${icon("qr")} Student Link</button>
+        <div class="actions"><button class="btn secondary" id="share">${icon("qr")} Student Portal</button>
           <button class="btn secondary" id="xls">${icon("download")} Export Excel</button>
+          <span class="badge ${sec.portfolio_published ? "green" : ""}" style="align-self:center" title="Student portfolio">${icon(sec.portfolio_published ? "eye" : "eyeoff")} ${sec.portfolio_published ? "Published" : "Not Published"}</span>
           ${nextC ? `<a class="btn ${open ? "green" : ""}" href="pin.html?class=${nextC.id}" target="_blank" rel="noopener">${icon(open ? "external" : "play")} ${open ? "Open PIN Screen" : `Start ${App.classLabel(nextC.number)}`}</a>` : ""}</div></div>
       ${open ? `<div class="live" style="margin-bottom:20px"><span class="live-dot"></span><div class="grow"><b>Attendance Is Open</b> for ${esc(openTerm.name)} · ${App.classLabel(open.number)} — ${Object.keys(recs(open.id)).length} of ${students.length} checked in</div>
         <button class="btn sm secondary" id="refresh">${icon("refresh")} Refresh</button></div>` : ""}
@@ -331,7 +342,7 @@
     $("#xls").onclick = exportExcel;
     const rf = $("#refresh"); if (rf) rf.onclick = async () => { await loadAttendance(); drawSection(); App.toast("Updated"); };
     $$(".tabs [data-tab]").forEach((b) => (b.onclick = () => go(`#/section/${sec.id}/${b.dataset.tab}`)));
-    ({ overview: tabOverview, classes: tabClasses, students: tabStudents, sheet: tabSheet, log: tabLog, settings: tabSettings }[curTab] || tabOverview)(X);
+    ({ overview: tabOverview, classes: tabClasses, students: tabStudents, sheet: tabSheet, marks: tabMarks, groups: tabGroups, results: tabResults, log: tabLog, settings: tabSettings }[curTab] || tabOverview)(X);
     scrollTo(0, scrollY);
     if (wrapScroll && $(".table-wrap.keep")) { $(".table-wrap.keep").scrollLeft = wrapScroll[0]; $(".table-wrap.keep").scrollTop = wrapScroll[1]; }
     // live refresh while a class is open
@@ -346,8 +357,8 @@
   const scrollY_ = () => (location.hash === _lastHash ? scrollY : 0); let _lastHash = "";
 
   function shareDialog(link) {
-    App.dialog({ title: "Student Attendance Link", ic: "link", okText: "", cancelText: "Close", html: true,
-      body: `<p>Share this link with the section once — it stays the same all semester. Students open it, type their ID and the PIN on your screen.</p>
+    App.dialog({ title: "Student Portal", ic: "link", okText: "", cancelText: "Close", html: true,
+      body: `<p>One link for all your sections, all semester. Students open it and type their Student ID to <b>mark attendance</b> with the PIN on your screen and to <b>see their portfolio</b> once you publish it.</p>
         <div class="qr" id="qrbox" style="margin:16px auto;max-width:260px"></div>
         <div class="linkbox"><code>${esc(link)}</code><button class="btn sm" id="lc">${icon("copy")} Copy</button><a class="btn sm secondary" href="${esc(link)}" target="_blank" rel="noopener">${icon("external")}</a></div>` });
     setTimeout(() => { try { new QRCode(document.getElementById("qrbox"), { text: link, width: 230, height: 230 }); } catch {} const b = $("#lc"); if (b) b.onclick = () => App.copy(link, "Link copied"); }, 0);
@@ -379,7 +390,11 @@
           : `<div class="empty" style="padding:24px"><div class="ic" style="background:var(--success-soft);color:var(--success)">${icon("check")}</div><p style="margin:0">No students are at risk${X.held.length ? "" : " yet"}.</p></div>`}
         </div></div>
       <div class="stack">
-        <div class="card"><h2 style="margin-bottom:18px">Distribution</h2><div class="bands">${bands.map(([l, n, c]) => `<div class="band"><span class="muted">${l}</span>
+        ${S.assess.length ? (() => { const R = allResults(), tot = Object.values(R).map((r) => r.overall), av = tot.length ? tot.reduce((n, x) => n + x, 0) / tot.length : null, f = Object.values(R).filter((r) => r.grade?.grade === "F").length;
+          return `<div class="card"><div class="card-head" style="margin-bottom:12px"><h2>Marks & Grades</h2><button class="btn sm soft" id="tores">${icon("target")} Results</button></div>
+            <ul class="list"><li>${icon("chart")}<span class="grow">Section average</span><b>${fmt(av)} / 100</b></li><li>${icon("alert")}<span class="grow">Currently failing (F)</span><b class="${f ? "pct-bad" : ""}">${f}</b></li>
+            <li>${icon(S.sec.portfolio_published ? "eye" : "eyeoff")}<span class="grow">Portfolio</span><b>${S.sec.portfolio_published ? "Published" : "Not Published"}</b></li></ul></div>`; })() : `<div class="card"><h2 style="margin-bottom:8px">Marks & Grades</h2><p class="small muted">No assessment plan yet.</p><button class="btn sm" id="tomarks2">${icon("book")} Set Up Marks</button></div>`}
+        <div class="card"><h2 style="margin-bottom:18px">Attendance Distribution</h2><div class="bands">${bands.map(([l, n, c]) => `<div class="band"><span class="muted">${l}</span>
           <div class="progress ${c === "green" ? "" : c}"><span style="width:${students.length ? (n / students.length) * 100 : 0}%"></span></div><b class="num">${n}</b></div>`).join("")}</div></div>
         <div class="card"><h2 style="margin-bottom:14px">Records</h2><ul class="list">
           <li><span class="mk P">P</span><span class="grow">On Time</span><b>${counts.P}</b></li>
@@ -392,6 +407,8 @@
           <li>${icon("clock")}<span class="grow">Late After</span><b>${S.sec.late_after_minutes ? S.sec.late_after_minutes + " min" : "Off"}</b></li>
           <li>${icon("smartphone")}<span class="grow">One Device per Class</span><b>${S.sec.one_device_per_class ? "On" : "Off"}</b></li></ul></div>
       </div></div>`;
+    const tr_ = $("#tores"); if (tr_) tr_.onclick = () => go(`#/section/${S.sec.id}/results`);
+    const tm_ = $("#tomarks2"); if (tm_) tm_.onclick = () => go(`#/section/${S.sec.id}/marks`);
     const cp = $("#cprisk"); if (cp) cp.onclick = () => App.copy(X.risk.map((s) => s.student_id).join("\n"), `${X.risk.length} IDs copied`);
     $$("[data-stu]").forEach((r) => (r.onclick = () => studentProfile(r.dataset.stu)));
   }
@@ -526,7 +543,7 @@
           <td class="num faint">${i + 1}</td><td><b>${esc(s.student_id)}</b></td><td>${esc(s.name) || `<span class="faint">—</span>`}</td>
           <td class="num">${p.h ? `${p.a} / ${p.h}` : "—"}</td><td class="num">${p.l || ""}</td>
           <td>${p.h ? `<div class="pct-cell">${App.progress(p.p, min)}<b class="${App.pctClass(p.p, min)}">${p.p}%</b></div>` : `<span class="faint" style="float:right">—</span>`}</td>
-          <td class="actions"><button class="icon-btn" data-edit-stu="${s.id}" title="Edit">${icon("edit")}</button><button class="icon-btn danger" data-del-stu="${s.id}" title="Remove">${icon("trash")}</button></td></tr>`).join("")}
+          <td class="actions"><button class="icon-btn" data-pf="${esc(s.student_id)}" title="Portfolio">${icon("book")}</button><button class="icon-btn" data-edit-stu="${s.id}" title="Edit">${icon("edit")}</button><button class="icon-btn danger" data-del-stu="${s.id}" title="Remove">${icon("trash")}</button></td></tr>`).join("")}
           ${list.length ? "" : `<tr><td colspan="7"><div class="empty" style="padding:20px">No students match this filter.</div></td></tr>`}</tbody></table></div>`
       : `<div class="empty"><div class="ic">${icon("users")}</div><h3>No Students Yet</h3><p>Upload the university's <b>Valid Student List</b> (.xlsx) or any Excel / CSV file with a Student ID column and a Name column.</p>
           <button class="btn" id="up2">${icon("upload")} Upload Student List</button></div>`}
@@ -551,6 +568,7 @@
     });
     $$("#stb tr[data-stu]").forEach((r) => (r.onclick = (e) => { if (e.target.closest("button")) return; studentProfile(r.dataset.stu); }));
     $$("[data-edit-stu]").forEach((b) => (b.onclick = () => editStudent(S.students.find((s) => s.id === b.dataset.editStu))));
+    $$("#stb [data-pf]").forEach((b) => (b.onclick = () => portfolioModal(b.dataset.pf)));
     $$("[data-del-stu]").forEach((b) => (b.onclick = async () => {
       const s = S.students.find((x) => x.id === b.dataset.delStu);
       if (!(await App.confirm("Remove Student?", `${s.student_id} ${s.name} will no longer be able to check in. Past attendance stays.`, "Remove"))) return;
@@ -732,12 +750,11 @@
           <div class="field-gap"></div>
           <label class="switch"><input type="checkbox" id="st_dev" ${sec.one_device_per_class ? "checked" : ""} /><span>One Device per Student per Class<span class="d">Stops one phone from checking in a second student in the same class.</span></span></label>
           <div style="height:18px"></div><button class="btn" id="saverules">${icon("check")} Save Rules</button></div>
+        ${gradingCards("left")}
       </div>
       <div class="stack">
-        <div class="card"><div class="card-head"><div><h2>Student Link</h2><div class="sub">Make a new link if the current one was shared outside the section.</div></div></div>
-          <div class="linkbox" style="margin-bottom:14px"><code>${esc(App.studentLink(sec.public_token))}</code></div>
-          <button class="btn amber" id="regen">${icon("refresh")} Generate a New Link</button><p class="hint">The old link stops working immediately.</p></div>
-        <div class="card" style="border-color:color-mix(in srgb,var(--danger) 35%,var(--border))"><div class="card-head"><div><h2 style="color:var(--danger)">Danger Zone</h2><div class="sub">Deletes the student list, all classes and all attendance of this section.</div></div></div>
+        ${gradingCards()}
+        <div class="card" style="border-color:color-mix(in srgb,var(--danger) 35%,var(--border))"><div class="card-head"><div><h2 style="color:var(--danger)">Danger Zone</h2><div class="sub">Deletes the student list, classes, attendance, marks and groups of this section.</div></div></div>
           <button class="btn red-soft" id="delsec">${icon("trash")} Delete This Section</button></div></div></div>`;
     let lateV = la ?? null;
     $$("#late button").forEach((b) => (b.onclick = () => { lateV = b.dataset.v ? +b.dataset.v : null; $$("#late button").forEach((x) => x.classList.toggle("on", x === b)); }));
@@ -750,14 +767,10 @@
       const upd = { late_after_minutes: lateV, min_attendance_pct: +$("#minp").value, one_device_per_class: $("#st_dev").checked };
       try { await q(sb.from("sections").update(upd).eq("id", sec.id)); Object.assign(sec, upd); drawSection(); App.toast("Rules saved"); } catch (x) { fail(x); }
     };
-    $("#regen").onclick = async () => {
-      if (!(await App.confirm("Generate a New Link?", "The current student link stops working right away. Share the new one with the section.", "Generate", false))) return;
-      const tok = [...crypto.getRandomValues(new Uint8Array(12))].map((b) => b.toString(16).padStart(2, "0")).join("");
-      try { await q(sb.from("sections").update({ public_token: tok }).eq("id", sec.id)); sec.public_token = tok; drawSection(); App.toast("New link created"); } catch (x) { fail(x); }
-    };
+    bindGrading();
     $("#delsec").onclick = async () => {
       const d = await App.dialog({ title: "Delete This Section?", danger: true, okText: "Delete Forever", html: true,
-        body: `<p>${esc(sec.course.code)} Section ${esc(sec.name)} — the student list, classes and attendance will be permanently deleted. Export to Excel first if you need a copy.</p>
+        body: `<p>${esc(sec.course.code)} Section ${esc(sec.name)} — the student list, classes, attendance, marks and groups will be permanently deleted. Export to Excel first if you need a copy.</p>
           <label>Type <b>${esc(sec.name)}</b> to confirm</label><input id="cf" />`, validate: (m) => (m.querySelector("#cf").value.trim() !== sec.name ? `Type ${sec.name} to confirm.` : null) });
       if (!d) return;
       try { await q(sb.from("sections").delete().eq("id", sec.id)); S = null; App.toast("Section deleted"); go("#/"); } catch (x) { fail(x); }
@@ -767,11 +780,11 @@
   // ------------------------------------------------------------------ Excel export
   function exportExcel() {
     const { sec, terms, students } = S, X = stats(), wb = XLSX.utils.book_new();
-    const info = [["Attendance export"], [], ["Course", `${sec.course.code} — ${sec.course.title}`], ["Section", sec.name], ["Class Code", sec.class_code || ""],
+    const info = [[S.assess.length ? "Student portfolio export" : "Attendance export"], [], ["Course", `${sec.course.code} — ${sec.course.title}`], ["Section", sec.name], ["Class Code", sec.class_code || ""],
       ["Intake", sec.intake.name], ["Exported", App.fmtDate(new Date())], ["Students", students.length], ["Classes Held", X.held.length], ["Minimum Attendance", sec.min_attendance_pct / 100], [],
-      ["How to Read"], ["Term sheets: 1 = attended (present, late or excused), 0 = absent, blank = class not held yet."],
+      ["How to Read"], ["Attendance sheets: 1 = attended (present, late or excused), 0 = absent, blank = class not held yet."], ["Results and Marks sheets: totals out of 100 per term, Grand Total uses the term weights, grades use the section's grade scale."],
       ["Detail sheet: P = present, L = late, E = excused, A = absent."],
-      ["To merge into the Portfolio: copy the Class columns of a term sheet into the Mid/Final Overall sheet (rows are in the same order as the uploaded student list)."]];
+      ["To merge into the Portfolio: copy the Class columns of a term attendance sheet into the Mid/Final Overall sheet (rows are in the same order as the uploaded student list)."]];
     const wsI = XLSX.utils.aoa_to_sheet(info); wsI["!cols"] = [{ wch: 20 }, { wch: 70 }]; if (wsI.B10) wsI.B10.z = "0%"; XLSX.utils.book_append_sheet(wb, wsI, "Info");
 
     // Summary
@@ -779,6 +792,31 @@
     const sr = students.map((s) => { const p = X.per[s.student_id]; return [s.student_id, s.name, ...terms.flatMap((t) => [p.byTerm[t.id].a, p.byTerm[t.id].h]), p.a, p.h, p.l, p.e, p.h ? p.a / p.h : "", p.h ? (p.p < X.min ? "Below Minimum" : "OK") : ""]; });
     const wsS = XLSX.utils.aoa_to_sheet([sh, ...sr]); fmtPct(wsS, sh.length - 2, sr.length); wsS["!cols"] = [{ wch: 13 }, { wch: 32 }, ...sh.slice(2).map((h) => ({ wch: Math.max(9, h.length + 2) }))];
     wsS["!autofilter"] = { ref: `A1:${XLSX.utils.encode_col(sh.length - 1)}${sr.length + 1}` }; XLSX.utils.book_append_sheet(wb, wsS, "Summary");
+
+    // Results + marks per term (when an assessment plan exists)
+    if (S.assess.length) {
+      const R = allResults(), coCodes = [...new Set(students.flatMap((s) => R[s.student_id].coList.map((c) => c.code)))];
+      const rh = ["Student ID", "Student Name", ...terms.map((t) => `${t.name} Total`), ...terms.map((t) => `${t.name} Grade`), "Grand Total", "Final Grade", "Grade Point", "Attendance %", ...coCodes.map((c) => `${c} %`), "COs Attained", "Complete"];
+      const rr = students.map((s) => { const r = R[s.student_id]; return [s.student_id, s.name, ...r.terms.map((t) => t.total), ...r.terms.map((t) => t.grade?.grade || ""), r.overall, r.grade?.grade || "", r.grade?.point ?? "",
+        r.attPct == null ? "" : r.attPct / 100, ...coCodes.map((c) => { const x = r.coList.find((o) => o.code === c); return x && x.pct != null ? x.pct / 100 : ""; }), `${r.coAttained}/${r.coList.length}`, r.complete ? "Yes" : "No"]; });
+      const wsR = XLSX.utils.aoa_to_sheet([rh, ...rr]);
+      [rh.indexOf("Attendance %"), ...coCodes.map((c) => rh.indexOf(`${c} %`))].forEach((ci) => fmtPct(wsR, ci, rr.length));
+      wsR["!cols"] = [{ wch: 13 }, { wch: 32 }, ...rh.slice(2).map((h) => ({ wch: Math.max(9, h.length + 2) }))];
+      wsR["!autofilter"] = { ref: `A1:${XLSX.utils.encode_col(rh.length - 1)}${rr.length + 1}` }; XLSX.utils.book_append_sheet(wb, wsR, "Results");
+      terms.forEach((t) => {
+        const items = S.assess.filter((a) => a.term_id === t.id).sort(bySort); if (!items.length) return;
+        const mh = ["Student ID", "Student Name", ...items.map((a) => `${itemLabel(a)} (/${fmt(a.max_marks, 2)})`), "Term Total", "Grade"];
+        const mr = students.map((s) => { const r = R[s.student_id].terms.find((x) => x.term.id === t.id), A = attByTerm(s.student_id)[t.id];
+          return [s.student_id, s.name, ...items.map((a) => (a.kind === "attendance" ? (A.held ? Math.round((A.attended / A.held) * a.max_marks * 100) / 100 : "") : markOf(a.id, s.student_id) ?? "")), r.total, r.grade?.grade || ""]; });
+        const ws = XLSX.utils.aoa_to_sheet([mh, ...mr]); ws["!cols"] = [{ wch: 13 }, { wch: 32 }, ...items.map((a) => ({ wch: Math.min(30, Math.max(10, itemLabel(a).length + 6)) })), { wch: 11 }, { wch: 7 }];
+        XLSX.utils.book_append_sheet(wb, ws, `${t.name} Marks`.slice(0, 31));
+      });
+      if (S.groups.length) {
+        const gr = [["Group", "Project Title", "Student ID", "Student Name"]];
+        S.groups.forEach((g) => S.members.filter((m) => m.group_id === g.id).forEach((m) => gr.push([g.name, g.title || "", m.student_id, S.students.find((x) => x.student_id === m.student_id)?.name || ""])));
+        const wsG = XLSX.utils.aoa_to_sheet(gr); wsG["!cols"] = [{ wch: 12 }, { wch: 34 }, { wch: 13 }, { wch: 32 }]; XLSX.utils.book_append_sheet(wb, wsG, "Groups");
+      }
+    }
 
     // One sheet per term, 1/0 — ready to paste into the Portfolio
     terms.forEach((t) => {
@@ -789,7 +827,7 @@
       const ws = XLSX.utils.aoa_to_sheet([hdr, ...rows]); fmtPct(ws, hdr.length - 1, rows.length);
       ws["!cols"] = [{ wch: 13 }, { wch: 32 }, ...t.classes.map(() => ({ wch: 9 })), { wch: 9 }, { wch: 12 }, { wch: 13 }];
       ws["!autofilter"] = { ref: `A1:${XLSX.utils.encode_col(hdr.length - 1)}${rows.length + 1}` };
-      XLSX.utils.book_append_sheet(wb, ws, t.name.slice(0, 31));
+      XLSX.utils.book_append_sheet(wb, ws, `${t.name} Attendance`.slice(0, 31));
     });
 
     // Detail letters
@@ -809,10 +847,498 @@
     const wsL = XLSX.utils.aoa_to_sheet(log); wsL["!cols"] = [{ wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 13 }, { wch: 32 }, { wch: 20 }, { wch: 9 }, { wch: 8 }, { wch: 10 }];
     XLSX.utils.book_append_sheet(wb, wsL, "Check-in Log");
 
-    XLSX.writeFile(wb, `Attendance_${safe(sec.course.code)}_${safe(sec.intake.name)}_Sec-${safe(sec.name)}_${new Date().toLocaleDateString("en-CA")}.xlsx`);
+    XLSX.writeFile(wb, `${S.assess.length ? "Portfolio" : "Attendance"}_${safe(sec.course.code)}_${safe(sec.intake.name)}_Sec-${safe(sec.name)}_${new Date().toLocaleDateString("en-CA")}.xlsx`);
     App.toast("Excel file downloaded");
   }
   function fmtPct(ws, col, n) { const c = XLSX.utils.encode_col(col); for (let r = 2; r <= n + 1; r++) { const cell = ws[`${c}${r}`]; if (cell && cell.t === "n") cell.z = "0%"; } }
+
+  // ================================================================== MARKS, GROUPS & RESULTS
+  const fmt = (x, d = 1) => Grade.fmt(x, d);
+  const bySort = (a, b) => (a.sort || 0) - (b.sort || 0);
+  async function loadMarks() {
+    S.assess = (await q(sb.from("assessments").select("*").eq("section_id", S.sec.id).order("sort"))).map((a) => ({ ...a, max_marks: +a.max_marks, weight: +a.weight }));
+    const ids = S.assess.map((a) => a.id); let rows = [];
+    for (let i = 0; i < ids.length; i += 80) rows = rows.concat(await App.fetchAll(() => sb.from("marks").select("assessment_id, student_id, score").in("assessment_id", ids.slice(i, i + 80)).order("id")));
+    S.marks = {}; rows.forEach((m) => ((S.marks[m.assessment_id] ||= {})[m.student_id] = m.score == null ? null : +m.score));
+  }
+  async function loadGroups() {
+    S.groups = await q(sb.from("groups").select("*").eq("section_id", S.sec.id).order("sort").order("name"));
+    S.members = await App.fetchAll(() => sb.from("group_members").select("*").eq("section_id", S.sec.id).order("id"));
+  }
+  const markOf = (aid, sid) => { const v = S.marks[aid]?.[sid]; return v == null ? null : v; };
+  function attByTerm(sid) { const m = {}; S.terms.forEach((t) => { let h = 0, a = 0; t.classes.forEach((c) => { if (!isHeld(c)) return; h++; if (recs(c.id)[sid]) a++; }); m[t.id] = { held: h, attended: a }; }); return m; }
+  const ctxFor = (s) => ({ terms: S.terms, assessments: S.assess, scale: S.sec.grade_scale, round: S.sec.round_total, coTarget: S.sec.course.co_target ?? 60, cos: S.sec.course.cos || [], specialGrade: s?.special_grade || null });
+  function resultOf(s) { const A = attByTerm(s.student_id); return Grade.student(ctxFor(s), (aid) => markOf(aid, s.student_id), (tid) => A[tid]); }
+  function allResults() { const o = {}; S.students.forEach((s) => (o[s.student_id] = resultOf(s))); return o; }
+  function averages() { const av = {}; S.assess.forEach((a) => { const v = S.students.map((s) => markOf(a.id, s.student_id)).filter((x) => x != null); if (v.length) av[a.id] = v.reduce((n, x) => n + x, 0) / v.length; }); return av; }
+  const groupOf = (sid) => { const m = S.members.find((x) => x.student_id === sid); return m && S.groups.find((g) => g.id === m.group_id); };
+  const maxGroups = () => (S.students.length > 40 ? 11 : 10);
+  const itemLabel = (a) => (a.grp ? `${a.grp} · ${a.name}` : a.name);
+
+  function portfolioData(sid) {
+    const s = S.students.find((x) => x.student_id === sid), marks = {};
+    S.assess.forEach((a) => { const v = markOf(a.id, sid); if (v != null) marks[a.id] = v; });
+    const g = groupOf(sid);
+    return { course: { ...S.sec.course }, section: { ...S.sec, intake: S.sec.intake.name }, student: { student_id: sid, special_grade: s?.special_grade || null },
+      terms: S.terms, assessments: S.assess.map((a) => ({ ...a, visible: true })), marks, averages: averages(),
+      classes: S.terms.flatMap((t) => t.classes.map((c) => ({ term_id: t.id, number: c.number, date: c.class_date, held: isHeld(c), status: recs(c.id)[sid]?.status || null }))),
+      group: g ? { name: g.name, title: g.title, members: S.members.filter((m) => m.group_id === g.id).map((m) => m.student_id).sort() } : null };
+  }
+  function portfolioModal(sid) {
+    const s = S.students.find((x) => x.student_id === sid);
+    App.dialog({ title: `${s?.name || sid}`, ic: "book", okText: "", cancelText: "Close", html: true, wide: true,
+      body: `<div class="row center-y" style="justify-content:space-between;margin-bottom:16px"><span class="muted">Student ID <b style="color:var(--text)">${esc(sid)}</b>${groupOf(sid) ? ` · ${esc(groupOf(sid).name)}` : ""}</span>
+        <span class="badge ${S.sec.portfolio_published ? "green" : ""}">${S.sec.portfolio_published ? `${icon("eye")} Students can see this` : `${icon("eyeoff")} Not published to students`}</span></div>${Grade.render(portfolioData(sid), { faculty: true })}` });
+    const m = $$(".modal-bg").pop(); m.querySelector(".modal").style.maxWidth = "1100px";
+  }
+
+  // ---------- autosave for marks
+  const SAVE = { dirty: new Map(), timer: null };
+  function saveState(st, msg) {
+    const el = $("#savest"); if (!el) return;
+    el.className = "save-state " + st;
+    el.innerHTML = st === "saving" ? `<span class="spinner" style="width:14px;height:14px"></span> Saving…` : st === "err" ? `${icon("alert")} ${esc(msg || "Not saved — retrying")}` : `${icon("check")} All changes saved`;
+  }
+  function queueMark(aid, sid, score) {
+    (S.marks[aid] ||= {})[sid] = score;
+    SAVE.dirty.set(aid + "|" + sid, { assessment_id: aid, student_id: sid, score });
+    saveState("saving"); clearTimeout(SAVE.timer); SAVE.timer = setTimeout(flushMarks, 600);
+  }
+  async function flushMarks() {
+    if (!SAVE.dirty.size) return saveState("saved");
+    const rows = [...SAVE.dirty.values()]; SAVE.dirty.clear();
+    try {
+      const now = new Date().toISOString();
+      for (let i = 0; i < rows.length; i += 500) await q(sb.from("marks").upsert(rows.slice(i, i + 500).map((r) => ({ ...r, updated_at: now })), { onConflict: "assessment_id,student_id" }));
+      saveState(SAVE.dirty.size ? "saving" : "saved");
+    } catch (x) {
+      rows.forEach((r) => !SAVE.dirty.has(r.assessment_id + "|" + r.student_id) && SAVE.dirty.set(r.assessment_id + "|" + r.student_id, r));
+      saveState("err", friendly(x)); clearTimeout(SAVE.timer); SAVE.timer = setTimeout(flushMarks, 4000);
+    }
+  }
+  addEventListener("beforeunload", (e) => { if (SAVE.dirty.size) { flushMarks(); e.preventDefault(); e.returnValue = ""; } });
+
+  // ---------- Marks tab
+  function tabMarks() {
+    if (!S.assess.length) return marksEmpty();
+    const ui = UI[S.sec.id];
+    if (!ui.mterm || !S.terms.find((t) => t.id === ui.mterm)) ui.mterm = S.terms[0]?.id;
+    const T = S.terms.find((t) => t.id === ui.mterm);
+    const items = S.assess.filter((a) => a.term_id === T.id).sort(bySort), rows = Grade.termRows(items);
+    const cols = rows.flatMap((r) => r.items);
+    const R = allResults(), wsum = rows.reduce((n, r) => n + (r.rule === "sum" ? r.items.reduce((m, a) => m + a.weight, 0) : Math.max(...r.items.map((a) => a.weight))), 0);
+    const head = (a) => `${esc(a.name)}<small>/ ${fmt(a.max_marks, 2)} · ${fmt(a.weight, 2)}%${a.co ? ` · ${esc(a.co)}` : ""}${a.by_group ? " · Group" : ""}${a.visible === false ? " · Hidden" : ""}</small>`;
+    const filled = cols.filter((a) => a.kind !== "attendance").reduce((n, a) => n + S.students.filter((s) => markOf(a.id, s.student_id) != null).length, 0);
+    const need = cols.filter((a) => a.kind !== "attendance").length * S.students.length;
+    $("#tab").innerHTML = `<div class="card flush">
+      <div class="card-head" style="padding-bottom:16px"><div class="row center-y grow">
+          <div class="seg" id="mterm">${S.terms.map((t) => `<button data-t="${t.id}" class="${t.id === T.id ? "on" : ""}">${esc(t.name)}</button>`).join("")}</div>
+          <div class="search" style="flex:1;min-width:180px;max-width:300px">${icon("search")}<input id="mq" placeholder="Search ID or Name" value="${esc(ui.q)}" /></div>
+          <span id="savest" class="save-state saved">${icon("check")} All changes saved</span></div>
+        <div class="btn-group"><button class="btn sm secondary" id="plan">${icon("settings")} Assessment Plan</button>
+          <button class="icon-btn bordered" id="mmenu" title="Import / Export">${icon("dots")}</button></div></div>
+      <div style="padding:0 24px 16px" class="row center-y small muted">
+        <span class="weight-meter ${Math.abs(wsum - 100) < 0.01 ? "ok" : "bad"}">${icon(Math.abs(wsum - 100) < 0.01 ? "check" : "alert")} Term weights add up to ${fmt(wsum, 2)}%</span>
+        <span>·</span><span>${filled} of ${need} marks entered</span><span>·</span><span>Type a mark and it saves by itself. <span class="kbd">Enter</span> moves down. You can paste a block of marks from Excel.</span></div>
+      ${S.students.length ? `<div class="table-wrap keep" style="max-height:640px;border-radius:0;border-left:0;border-right:0;border-bottom:0"><table class="mgrid"><thead>
+        <tr><th class="sticky" rowspan="2">Student ID</th><th class="name" rowspan="2" style="text-align:left">Name</th>
+          ${rows.map((r) => (r.group ? `<th class="grp" colspan="${r.items.length}">${esc(r.label)}${r.rule !== "sum" ? ` <span class="faint">· ${r.rule === "best" ? "Best Counted" : "Average"}</span>` : ""}</th>` : `<th class="it" rowspan="2">${head(r.items[0])}</th>`)).join("")}
+          <th rowspan="2" class="num">Total<small style="display:block;font-weight:500;color:var(--faint)">/ 100</small></th><th rowspan="2" style="padding-right:20px">Grade</th></tr>
+        <tr>${rows.filter((r) => r.group).flatMap((r) => r.items).map((a) => `<th class="it">${head(a)}</th>`).join("")}</tr></thead>
+        <tbody id="mtb">${S.students.map((s) => { const tr = R[s.student_id].terms.find((x) => x.term.id === T.id); const A = attByTerm(s.student_id)[T.id];
+          return `<tr data-s="${esc(s.student_id)}" data-q="${esc((s.student_id + " " + s.name).toLowerCase())}"><td class="sticky"><b>${esc(s.student_id)}</b></td><td class="name" title="${esc(s.name)}">${esc(s.name)}</td>
+            ${cols.map((a) => a.kind === "attendance" ? `<td class="calc" title="${A.attended} of ${A.held} classes">${A.held ? fmt((A.attended / A.held) * a.max_marks, 2) : "—"}</td>`
+              : `<td><input class="mi ${a.by_group ? "grpm" : ""}" inputmode="decimal" data-a="${a.id}" data-max="${a.max_marks}" value="${markOf(a.id, s.student_id) ?? ""}" aria-label="${esc(itemLabel(a))} for ${esc(s.student_id)}" /></td>`).join("")}
+            <td class="tot" data-tot>${fmt(tr.total)}</td><td data-grd style="padding-right:20px"><span class="grade-pill sm ${gradeTone(tr.grade?.grade)}">${esc(tr.grade?.grade || "—")}</span></td></tr>`; }).join("")}</tbody></table></div>`
+      : `<div class="empty"><div class="ic">${icon("users")}</div><h3>No Students Yet</h3><p>Upload the student list first.</p></div>`}</div>`;
+    $$("#mterm button").forEach((b) => (b.onclick = () => { ui.mterm = b.dataset.t; drawSection(); }));
+    const filt = () => { const v = ui.q.toLowerCase(); $$("#mtb tr").forEach((r) => (r.style.display = !v || r.dataset.q.includes(v) ? "" : "none")); };
+    $("#mq").oninput = (e) => { ui.q = e.target.value; filt(); }; filt();
+    $("#plan").onclick = planEditor;
+    $("#mmenu").onclick = (e) => popover(e.currentTarget, `<button data-v="tpl">${icon("download")} Download Marks Sheet (${esc(T.name)})</button><button data-v="up">${icon("upload")} Upload Marks Sheet</button>`, (v) => (v === "tpl" ? marksTemplate(T) : pickMarksFile(T)));
+    const tb = $("#mtb"); if (!tb) return;
+    const recalc = (tr) => { const s = S.students.find((x) => x.student_id === tr.dataset.s), r = resultOf(s).terms.find((x) => x.term.id === T.id);
+      tr.querySelector("[data-tot]").textContent = fmt(r.total); tr.querySelector("[data-grd]").innerHTML = `<span class="grade-pill sm ${gradeTone(r.grade?.grade)}">${esc(r.grade?.grade || "—")}</span>`; };
+    const apply = (inp) => {
+      const raw = inp.value.trim(), max = +inp.dataset.max, tr = inp.closest("tr");
+      if (raw === "") { inp.classList.remove("bad"); queueMark(inp.dataset.a, tr.dataset.s, null); return recalc(tr); }
+      const v = +raw.replace(",", ".");
+      if (isNaN(v) || v < 0 || v > max) { inp.classList.add("bad"); inp.title = `Enter a number from 0 to ${max}`; return; }
+      inp.classList.remove("bad"); inp.title = ""; queueMark(inp.dataset.a, tr.dataset.s, Math.round(v * 100) / 100); recalc(tr);
+    };
+    tb.addEventListener("input", (e) => e.target.classList.contains("mi") && apply(e.target));
+    tb.addEventListener("focusin", (e) => e.target.classList.contains("mi") && e.target.select());
+    const grid = () => $$("#mtb tr").filter((r) => r.style.display !== "none").map((r) => $$("input.mi", r));
+    const pos = (inp) => { const g = grid(); for (let r = 0; r < g.length; r++) { const c = g[r].indexOf(inp); if (c >= 0) return [g, r, c]; } return [g, -1, -1]; };
+    tb.addEventListener("keydown", (e) => {
+      const inp = e.target; if (!inp.classList.contains("mi")) return;
+      const [g, r, c] = pos(inp); let nr = r, nc = c;
+      if (e.key === "Enter" || e.key === "ArrowDown") nr = r + (e.shiftKey && e.key === "Enter" ? -1 : 1);
+      else if (e.key === "ArrowUp") nr = r - 1;
+      else if (e.key === "ArrowRight" && inp.selectionStart === inp.value.length) nc = c + 1;
+      else if (e.key === "ArrowLeft" && inp.selectionStart === 0) nc = c - 1;
+      else return;
+      const t = g[nr]?.[nc]; if (t) { e.preventDefault(); t.focus(); }
+    });
+    tb.addEventListener("paste", (e) => {
+      const inp = e.target; if (!inp.classList.contains("mi")) return;
+      const text = e.clipboardData.getData("text"); if (!/[\t\n]/.test(text.trim())) return;
+      e.preventDefault();
+      const [g, r, c] = pos(inp), lines = text.replace(/\r/g, "").replace(/\n$/, "").split("\n").map((l) => l.split("\t"));
+      let n = 0, bad = 0;
+      lines.forEach((cells, i) => cells.forEach((v, j) => { const t = g[r + i]?.[c + j]; if (!t) return; t.value = v.trim(); apply(t); n++; if (t.classList.contains("bad")) bad++; }));
+      App.toast(bad ? `${n} cells pasted — ${bad} need checking (shown in red)` : `${n} marks pasted`, !!bad);
+    });
+  }
+  const gradeTone = (g) => (!g ? "" : g === "F" ? "red" : /^A/.test(g) ? "green" : /^B/.test(g) ? "blue" : /^(I|W|UW)$/.test(g) ? "violet" : "amber");
+
+  function marksEmpty() {
+    const P = Grade.PRESETS;
+    $("#tab").innerHTML = `<div class="card"><div class="empty" style="padding-bottom:20px"><div class="ic">${icon("book")}</div><h3>Set Up the Assessment Plan</h3>
+        <p>Choose a ready-made plan that matches your Portfolio file, or build your own. You can change every item, mark and weight afterwards.</p></div>
+      <div class="grid cols-3">${Object.entries(P).map(([k, p]) => `<button class="sec-card" data-preset="${k}" style="cursor:pointer;text-align:left;font:inherit">
+          <div class="top"><div class="grow"><div class="code">${k === "theory" || k === "lab" ? "General" : "Your Course"}</div><div class="title">${esc(p.label)}</div></div><div class="sec-letter">${icon("layers")}</div></div>
+          <div class="small muted">${planSummary(p)}</div></button>`).join("")}
+        <button class="sec-card" id="ownplan" style="cursor:pointer;text-align:left;font:inherit"><div class="top"><div class="grow"><div class="code">Custom</div><div class="title">Build My Own</div></div><div class="sec-letter">${icon("plus")}</div></div>
+          <div class="small muted">Start empty and add your own quizzes, assignments and exams.</div></button></div></div>`;
+    $$("[data-preset]").forEach((b) => (b.onclick = () => applyPreset(b.dataset.preset)));
+    $("#ownplan").onclick = planEditor;
+  }
+  function planSummary(p) {
+    const rows = Grade.termRows(p.plan.filter((x) => x.term === 0).map((x, i) => ({ ...x, sort: i })));
+    return rows.map((r) => `${esc(r.label.replace(/ \(.*\)$/, ""))} ${fmt(r.rule === "sum" ? r.items.reduce((n, a) => n + a.weight, 0) : r.items[0].weight)}%`).join(" · ") + ` · Mid ${p.termWeights[0]}% / Final ${p.termWeights[1]}%`;
+  }
+  async function ensureTwoTerms() {
+    const t = [...S.terms].sort(bySort);
+    if (t.length < 1) { const x = await q(sb.from("terms").insert({ section_id: S.sec.id, name: "Mid Term", sort: 1 }).select().single()); x.classes = []; S.terms.push(x); t.push(x); }
+    if (t.length < 2) { const x = await q(sb.from("terms").insert({ section_id: S.sec.id, name: "Final Term", sort: 2 }).select().single()); x.classes = []; S.terms.push(x); t.push(x); }
+    return t;
+  }
+  async function applyPreset(key) {
+    const p = Grade.PRESETS[key], hasMarks = Object.values(S.marks).some((m) => Object.values(m).some((v) => v != null));
+    if (!(await App.confirm(`Use “${p.label}”?`, hasMarks ? "This replaces the current assessment plan. Marks already entered for the current plan will be deleted." : "The plan is created for Mid Term and Final Term. You can edit it afterwards.", "Use This Plan", hasMarks))) return;
+    try {
+      const terms = await ensureTwoTerms();
+      if (S.assess.length) await q(sb.from("assessments").delete().eq("section_id", S.sec.id));
+      await q(sb.from("assessments").insert(p.plan.map((x, i) => ({ section_id: S.sec.id, term_id: terms[x.term].id, name: x.name, grp: x.grp || null, rule: x.rule || "sum", kind: x.kind || "marks",
+        max_marks: x.max_marks, weight: x.weight, co: x.co || null, by_group: !!x.by_group, visible: true, sort: i + 1 }))));
+      for (let i = 0; i < 2; i++) { await q(sb.from("terms").update({ weight: p.termWeights[i] }).eq("id", terms[i].id)); terms[i].weight = p.termWeights[i]; }
+      if (p.cos.length && !(S.sec.course.cos || []).length) { await q(sb.from("courses").update({ cos: p.cos }).eq("id", S.sec.course.id)); S.sec.course.cos = p.cos; }
+      await loadMarks(); drawSection(); App.toast("Assessment plan ready — start entering marks");
+    } catch (x) { fail(x); }
+  }
+
+  // ---------- Assessment plan editor
+  async function planEditor() {
+    const terms = [...S.terms].sort(bySort);
+    if (!terms.length) return App.toast("Add a term in the Classes tab first", true);
+    let local = S.assess.map((a) => ({ ...a })).sort(bySort), cur = UI[S.sec.id].mterm || terms[0].id;
+    const tw = Object.fromEntries(terms.map((t) => [t.id, t.weight ?? ""]));
+    const cos = (S.sec.course.cos || []).map((c) => c.code);
+    const dlgP = App.dialog({ title: "Assessment Plan", ic: "settings", okText: "Save Plan", html: true, wide: true, body: "<div id='pe'></div>",
+      validate: () => { const bad = local.find((a) => !a.name.trim() || !(+a.max_marks > 0) || isNaN(+a.weight)); return bad ? `Check “${bad.name || "(no name)"}”: it needs a name, a full mark above 0 and a weight.` : null; } });
+    const m = $$(".modal-bg").pop(); m.querySelector(".modal").style.maxWidth = "1180px";
+    const box = m.querySelector("#pe");
+    const termSum = (tid) => Grade.termRows(local.filter((a) => a.term_id === tid)).reduce((n, r) => n + (r.rule === "sum" ? r.items.reduce((k, a) => k + (+a.weight || 0), 0) : Math.max(...r.items.map((a) => +a.weight || 0))), 0);
+    const draw = () => {
+      const rows = local.filter((a) => a.term_id === cur), groups = [...new Set(local.map((a) => a.grp).filter(Boolean))];
+      const ws = termSum(cur), twSum = terms.reduce((n, t) => n + (+tw[t.id] || 0), 0);
+      box.innerHTML = `<div class="row center-y" style="justify-content:space-between;margin-bottom:14px">
+          <div class="seg" id="pt">${terms.map((t) => `<button data-t="${t.id}" class="${t.id === cur ? "on" : ""}">${esc(t.name)} <span class="faint">${fmt(termSum(t.id), 2)}%</span></button>`).join("")}</div>
+          <select id="ppre" style="width:auto"><option value="">Replace with a preset…</option>${Object.entries(Grade.PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.label)}</option>`).join("")}</select></div>
+        <div class="row center-y small" style="gap:14px;margin-bottom:14px;padding:12px 14px;border-radius:12px;background:var(--surface-2)"><b>Share of the course total:</b>
+          ${terms.map((t) => `<label class="row center-y" style="gap:8px;margin:0;font-weight:500">${esc(t.name)} <input data-tw="${t.id}" type="number" min="0" max="100" step="5" value="${tw[t.id]}" style="width:76px;min-height:34px;padding:4px 8px" /> %</label>`).join("")}
+          <span class="weight-meter ${Math.abs(twSum - 100) < 0.01 ? "ok" : "bad"}">${fmt(twSum, 2)}%</span><span class="faint">AIUB: Mid 40% · Final 60%</span></div>
+        <datalist id="grps">${groups.map((g) => `<option value="${esc(g)}">`).join("")}</datalist><datalist id="cosl">${cos.map((c) => `<option value="${esc(c)}">`).join("")}</datalist>
+        <div class="table-wrap" style="max-height:440px"><table class="plan-table"><thead><tr><th></th><th>Group <span class="faint">(optional)</span></th><th>Assessment</th><th>Group Rule</th><th>Type</th><th class="num">Full Mark</th><th class="num">Weight %</th><th>CO</th><th class="center" title="One mark for the whole project group">Group Mark</th><th class="center" title="Students can see this mark">Visible</th><th></th></tr></thead>
+          <tbody>${rows.map((a) => { const i = local.indexOf(a); return `<tr data-i="${i}">
+            <td class="nowrap"><button class="icon-btn" data-up="${i}" title="Move up" style="width:28px;height:28px;transform:rotate(90deg)">${icon("back")}</button></td>
+            <td><input data-f="grp" list="grps" value="${esc(a.grp || "")}" placeholder="—" style="min-width:140px" /></td>
+            <td><input data-f="name" value="${esc(a.name)}" style="min-width:230px" /></td>
+            <td><select data-f="rule" style="min-width:128px" ${a.grp ? "" : "disabled"}><option value="sum" ${a.rule === "sum" ? "selected" : ""}>Add Up</option><option value="best" ${a.rule === "best" ? "selected" : ""}>Best One</option><option value="avg" ${a.rule === "avg" ? "selected" : ""}>Average</option></select></td>
+            <td><select data-f="kind" style="min-width:138px"><option value="marks" ${a.kind !== "attendance" ? "selected" : ""}>Marks</option><option value="attendance" ${a.kind === "attendance" ? "selected" : ""}>Attendance</option></select></td>
+            <td><input data-f="max_marks" type="number" min="0.5" step="0.5" value="${a.max_marks}" style="width:80px" /></td>
+            <td><input data-f="weight" type="number" min="0" max="100" step="0.5" value="${a.weight}" style="width:80px" /></td>
+            <td><input data-f="co" list="cosl" value="${esc(a.co || "")}" placeholder="—" style="width:72px" /></td>
+            <td class="chk"><input type="checkbox" data-f="by_group" ${a.by_group ? "checked" : ""} /></td>
+            <td class="chk"><input type="checkbox" data-f="visible" ${a.visible !== false ? "checked" : ""} /></td>
+            <td><button class="icon-btn danger" data-del="${i}" title="Remove">${icon("trash")}</button></td></tr>`; }).join("") || `<tr><td colspan="11"><div class="empty" style="padding:22px">No assessments in this term yet.</div></td></tr>`}</tbody></table></div>
+        <div class="row center-y" style="justify-content:space-between;margin-top:14px">
+          <div class="btn-group"><button class="btn sm secondary" id="padd">${icon("plus")} Add Assessment</button><button class="btn sm secondary" id="patt">${icon("calendar")} Add Attendance Marks</button></div>
+          <span class="weight-meter ${Math.abs(ws - 100) < 0.01 ? "ok" : "bad"}">${icon(Math.abs(ws - 100) < 0.01 ? "check" : "alert")} This term adds up to ${fmt(ws, 2)}%${Math.abs(ws - 100) < 0.01 ? "" : " — should be 100%"}</span></div>
+        <p class="hint" style="margin-top:12px"><b>Weight</b> is how many % of the term total an item is worth. A 100-mark exam that counts 60% has Full Mark 100, Weight 60.
+          Items with the same <b>Group</b> are shown together: <b>Add Up</b> adds them (exam parts, rubric criteria), <b>Best One</b> counts only the best (quizzes).
+          <b>Attendance</b> items are filled in automatically from the attendance record.</p>`;
+      box.querySelectorAll("#pt button").forEach((b) => (b.onclick = () => { cur = b.dataset.t; draw(); }));
+      box.querySelectorAll("[data-tw]").forEach((inp) => (inp.oninput = () => { tw[inp.dataset.tw] = inp.value; }));
+      box.querySelectorAll("[data-tw]").forEach((inp) => (inp.onchange = draw));
+      box.querySelectorAll("tr[data-i]").forEach((tr) => {
+        const a = local[+tr.dataset.i];
+        tr.querySelectorAll("[data-f]").forEach((el) => {
+          const f = el.dataset.f;
+          el.addEventListener(el.type === "checkbox" || el.tagName === "SELECT" ? "change" : "input", () => {
+            a[f] = el.type === "checkbox" ? el.checked : f === "max_marks" || f === "weight" ? +el.value : el.value.trim() ? el.value : f === "name" ? "" : null;
+            if (f === "kind" && a.kind === "attendance") { a.max_marks = a.weight || 10; }
+            if (f === "grp" && !a.grp) a.rule = "sum";
+            if (f === "grp" && a.grp) { const sib = local.find((x) => x !== a && x.grp === a.grp && x.term_id === a.term_id); if (sib) a.rule = sib.rule; }
+            if (f === "rule" && a.grp) local.filter((x) => x.grp === a.grp && x.term_id === a.term_id).forEach((x) => (x.rule = a.rule));
+          });
+          if (["weight", "grp", "rule", "kind"].includes(f)) el.addEventListener("change", draw);
+        });
+      });
+      box.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => { local.splice(+b.dataset.del, 1); draw(); }));
+      box.querySelectorAll("[data-up]").forEach((b) => (b.onclick = () => { const i = +b.dataset.up, mine = local.filter((a) => a.term_id === cur), k = mine.indexOf(local[i]); if (k <= 0) return;
+        const j = local.indexOf(mine[k - 1]); [local[i], local[j]] = [local[j], local[i]]; draw(); }));
+      box.querySelector("#padd").onclick = () => { local.push({ term_id: cur, name: "New Assessment", grp: null, rule: "sum", kind: "marks", max_marks: 10, weight: 10, co: null, by_group: false, visible: true }); draw(); box.querySelector("tbody tr:last-child [data-f=name]")?.select(); };
+      box.querySelector("#patt").onclick = () => { local.unshift({ term_id: cur, name: "Attendance", grp: null, rule: "sum", kind: "attendance", max_marks: 10, weight: 10, co: null, by_group: false, visible: true }); draw(); };
+      box.querySelector("#ppre").onchange = async (e) => {
+        const p = Grade.PRESETS[e.target.value]; if (!p) return;
+        if (!(await App.confirm(`Replace with “${p.label}”?`, "Every term's items in this editor are replaced. Nothing is saved until you press Save Plan.", "Replace", false))) { e.target.value = ""; return; }
+        const t2 = terms; local = p.plan.filter((x) => t2[x.term]).map((x) => ({ term_id: t2[x.term].id, name: x.name, grp: x.grp || null, rule: x.rule || "sum", kind: x.kind || "marks", max_marks: x.max_marks, weight: x.weight, co: x.co || null, by_group: !!x.by_group, visible: true }));
+        terms.forEach((t, i) => (tw[t.id] = p.termWeights[i] ?? tw[t.id])); local._cos = p.cos; draw();
+      };
+    };
+    draw();
+    const ok = await dlgP; if (!ok) return;
+    try {
+      const keep = new Set(local.filter((a) => a.id).map((a) => a.id)), gone = S.assess.filter((a) => !keep.has(a.id));
+      const lost = gone.filter((a) => Object.values(S.marks[a.id] || {}).some((v) => v != null));
+      if (lost.length && !(await App.confirm("Delete marks?", `${lost.length} removed item${lost.length > 1 ? "s have" : " has"} marks entered (${lost.map((a) => a.name).slice(0, 4).join(", ")}${lost.length > 4 ? "…" : ""}). Those marks will be deleted.`, "Delete & Save"))) return;
+      for (let i = 0; i < gone.length; i += 100) await q(sb.from("assessments").delete().in("id", gone.slice(i, i + 100).map((a) => a.id)));
+      const order = terms.flatMap((t) => local.filter((a) => a.term_id === t.id));
+      const clean = (a, i) => ({ section_id: S.sec.id, term_id: a.term_id, name: a.name.trim(), grp: a.grp ? a.grp.trim() : null, rule: a.grp ? a.rule : "sum", kind: a.kind, max_marks: +a.max_marks, weight: +a.weight, co: a.co ? a.co.trim().toUpperCase() : null, by_group: !!a.by_group, visible: a.visible !== false, sort: i + 1 });
+      const ins = [], upd = [];
+      order.forEach((a, i) => (a.id ? upd.push([a.id, clean(a, i)]) : ins.push(clean(a, i))));
+      if (ins.length) await q(sb.from("assessments").insert(ins));
+      for (let i = 0; i < upd.length; i += 10) await Promise.all(upd.slice(i, i + 10).map(([id, row]) => q(sb.from("assessments").update(row).eq("id", id))));
+      for (const t of terms) { const w = tw[t.id] === "" || tw[t.id] == null ? null : +tw[t.id]; if (w !== (t.weight == null ? null : +t.weight)) { await q(sb.from("terms").update({ weight: w }).eq("id", t.id)); t.weight = w; } }
+      if (local._cos && local._cos.length && !(S.sec.course.cos || []).length) { await q(sb.from("courses").update({ cos: local._cos }).eq("id", S.sec.course.id)); S.sec.course.cos = local._cos; }
+      await loadMarks(); drawSection();
+      const bad = terms.filter((t) => Math.abs(termSum(t.id) - 100) > 0.01 && local.some((a) => a.term_id === t.id));
+      App.toast(bad.length ? `Plan saved — ${bad.map((t) => t.name).join(", ")} does not add up to 100%` : "Assessment plan saved", !!bad.length);
+    } catch (x) { fail(x); }
+  }
+
+  function marksTemplate(T) {
+    const items = S.assess.filter((a) => a.term_id === T.id && a.kind !== "attendance").sort(bySort);
+    const hdr = ["Student ID", "Student Name", ...items.map((a) => `${itemLabel(a)} (/${fmt(a.max_marks, 2)})`)];
+    const rows = S.students.map((s) => [s.student_id, s.name, ...items.map((a) => markOf(a.id, s.student_id) ?? "")]);
+    const ws = XLSX.utils.aoa_to_sheet([hdr, ...rows]); ws["!cols"] = [{ wch: 13 }, { wch: 32 }, ...items.map((a) => ({ wch: Math.min(28, Math.max(10, itemLabel(a).length + 6)) }))];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, T.name.slice(0, 31));
+    XLSX.writeFile(wb, `Marks_${safe(S.sec.course.code)}_Sec-${safe(S.sec.name)}_${safe(T.name)}.xlsx`);
+  }
+  function pickMarksFile(T) {
+    const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".xlsx,.xls,.csv";
+    inp.onchange = () => inp.files[0] && uploadMarks(T, inp.files[0]); inp.click();
+  }
+  async function uploadMarks(T, file) {
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
+      const hr = rows.findIndex((r) => r.some((c) => /^student\s*id$/i.test(String(c).trim())));
+      if (hr < 0) throw new Error("Could not find a “Student ID” column. Use Download Marks Sheet to get the right format.");
+      const H = rows[hr].map((c) => String(c).trim()), idc = H.findIndex((c) => /^student\s*id$/i.test(c));
+      const items = S.assess.filter((a) => a.term_id === T.id && a.kind !== "attendance");
+      const norm = (s) => s.toLowerCase().replace(/\s*\(\/[\d.]+\)\s*$/, "").replace(/\s+/g, " ").trim();
+      const map = H.map((h) => items.find((a) => norm(itemLabel(a)) === norm(h) || norm(a.name) === norm(h) && !items.some((b) => b !== a && norm(b.name) === norm(h))));
+      if (!map.some(Boolean)) throw new Error(`None of the columns match ${T.name} assessments. Use Download Marks Sheet to get the right format.`);
+      const known = new Set(S.students.map((s) => s.student_id)); let cells = 0, bad = 0; const unknown = [], vals = [];
+      for (let r = hr + 1; r < rows.length; r++) {
+        const id = normId(rows[r][idc]); if (!id) continue;
+        if (!known.has(id)) { unknown.push(id); continue; }
+        map.forEach((a, c) => { if (!a) return; const raw = rows[r][c]; if (raw === "" || raw == null) return; const v = +String(raw).replace(",", ".");
+          if (isNaN(v) || v < 0 || v > a.max_marks) { bad++; return; } vals.push([a.id, id, Math.round(v * 100) / 100]); cells++; });
+      }
+      const d = await App.dialog({ title: "Upload Marks", ic: "upload", okText: `Save ${cells} Marks`, html: true,
+        body: `<p><b>${cells}</b> marks found for <b>${map.filter(Boolean).length}</b> ${T.name} assessments.</p>
+          ${bad ? `<div class="msg warn">${icon("alert")}<div>${bad} values are not numbers or are above the full mark — they will be skipped.</div></div>` : ""}
+          ${unknown.length ? `<div class="msg warn">${icon("alert")}<div>${unknown.length} Student IDs are not in this section and will be skipped: ${esc(unknown.slice(0, 6).join(", "))}${unknown.length > 6 ? "…" : ""}</div></div>` : ""}` });
+      if (!d || !cells) return;
+      vals.forEach(([a, s, v]) => queueMark(a, s, v)); await flushMarks(); drawSection(); App.toast(`${cells} marks saved`);
+    } catch (x) { fail(x); }
+  }
+
+  // ---------- Groups tab
+  function tabGroups() {
+    const gAss = S.assess.filter((a) => a.by_group && a.kind !== "attendance").sort(bySort), mg = maxGroups();
+    const inGroup = new Set(S.members.map((m) => m.student_id)), free = S.students.filter((s) => !inGroup.has(s.student_id));
+    const nameOf = (sid) => S.students.find((s) => s.student_id === sid)?.name || "";
+    $("#tab").innerHTML = `<div class="card" style="margin-bottom:20px"><div class="card-head" style="margin:0"><div><h2>Project Groups</h2>
+        <div class="sub">${S.groups.length} of up to ${mg} groups · ${S.members.length} of ${S.students.length} students placed${free.length ? ` · <b class="pct-warn">${free.length} not in a group</b>` : ""} · The same groups are used for every term.</div></div>
+        <div class="btn-group"><button class="btn" id="gnew" ${S.groups.length >= mg ? "disabled" : ""}>${icon("plus")} New Group</button><button class="btn secondary" id="gauto">${icon("zap")} Auto-Create</button>
+          ${S.groups.length ? `<button class="icon-btn bordered" id="gmenu">${icon("dots")}</button>` : ""}</div></div></div>
+      ${gAss.length ? "" : `<div class="msg info" style="margin:0 0 20px">${icon("info")}<div>Tip: in the Assessment Plan, tick <b>Group Mark</b> on project items. Then you can give one mark per group here and every member gets it.</div></div>`}
+      ${S.groups.length ? `<div class="grp-grid">${S.groups.map((g) => { const mem = S.members.filter((m) => m.group_id === g.id);
+        return `<div class="grp-card" data-g="${g.id}"><div class="row center-y" style="gap:10px"><div class="sec-letter" style="width:40px;height:40px;border-radius:11px;display:grid;place-items:center;font-weight:800;background:var(--primary-soft);color:var(--primary)">${esc(g.name.replace(/\D/g, "") || g.name[0])}</div>
+            <div class="grow"><b>${esc(g.name)}</b><div class="xs muted">${g.title ? esc(g.title) : "No project title"}</div></div>
+            <button class="icon-btn" data-gedit="${g.id}" title="Rename">${icon("edit")}</button><button class="icon-btn danger" data-gdel="${g.id}" title="Delete">${icon("trash")}</button></div>
+          <div class="members">${mem.map((m) => `<div class="member"><b>${esc(m.student_id)}</b><span class="grow">${esc(nameOf(m.student_id))}</span><button class="icon-btn" data-mrem="${m.id}" title="Remove" style="width:28px;height:28px">${icon("x")}</button></div>`).join("") || `<span class="small faint">No members yet</span>`}</div>
+          ${free.length ? `<select data-madd="${g.id}"><option value="">+ Add a student…</option>${free.map((s) => `<option value="${esc(s.student_id)}">${esc(s.student_id)} — ${esc(s.name)}</option>`).join("")}</select>` : ""}
+          ${gAss.length && mem.length ? `<div class="grp-marks">${gAss.map((a) => { const vals = mem.map((m) => markOf(a.id, m.student_id)), same = vals.every((v) => v === vals[0]);
+            return `<span>${esc(itemLabel(a))} <span class="faint xs">/ ${fmt(a.max_marks, 2)} · ${esc(S.terms.find((t) => t.id === a.term_id)?.name || "")}</span></span>
+              <input inputmode="decimal" data-gm="${a.id}" data-max="${a.max_marks}" value="${same && vals[0] != null ? vals[0] : ""}" placeholder="${same ? "" : "Mixed"}" />`; }).join("")}</div>` : ""}</div>`; }).join("")}</div>`
+      : `<div class="card"><div class="empty"><div class="ic">${icon("users")}</div><h3>No Groups Yet</h3><p>Create groups one by one, or let the app make them from the student list.</p></div></div>`}`;
+    $("#gnew").onclick = () => editGroup(null);
+    $("#gauto").onclick = autoGroups;
+    const gm = $("#gmenu"); if (gm) gm.onclick = (e) => popover(e.currentTarget, `<button data-v="clear" style="color:var(--danger)">${icon("trash")} Delete All Groups</button>`, async () => {
+      if (!(await App.confirm("Delete all groups?", "Every group and its member list will be deleted. Marks already given stay with each student."))) return;
+      try { await q(sb.from("groups").delete().eq("section_id", S.sec.id)); await loadGroups(); drawSection(); } catch (x) { fail(x); } });
+    $$("[data-gedit]").forEach((b) => (b.onclick = () => editGroup(S.groups.find((g) => g.id === b.dataset.gedit))));
+    $$("[data-gdel]").forEach((b) => (b.onclick = async () => { const g = S.groups.find((x) => x.id === b.dataset.gdel);
+      if (!(await App.confirm(`Delete ${g.name}?`, "The group is removed. Its members become unassigned; their marks stay."))) return;
+      try { await q(sb.from("groups").delete().eq("id", g.id)); await loadGroups(); drawSection(); } catch (x) { fail(x); } }));
+    $$("[data-mrem]").forEach((b) => (b.onclick = async () => { try { await q(sb.from("group_members").delete().eq("id", +b.dataset.mrem)); await loadGroups(); drawSection(); } catch (x) { fail(x); } }));
+    $$("[data-madd]").forEach((sel) => (sel.onchange = async () => { if (!sel.value) return;
+      try { await q(sb.from("group_members").insert({ group_id: sel.dataset.madd, section_id: S.sec.id, student_id: sel.value })); await loadGroups(); drawSection(); } catch (x) { fail(x); } }));
+    $$("[data-gm]").forEach((inp) => (inp.onchange = async () => {
+      const raw = inp.value.trim(), max = +inp.dataset.max, v = raw === "" ? null : +raw.replace(",", ".");
+      if (v != null && (isNaN(v) || v < 0 || v > max)) { inp.classList.add("bad"); return App.toast(`Enter a number from 0 to ${max}`, true); }
+      const g = inp.closest("[data-g]").dataset.g; S.members.filter((m) => m.group_id === g).forEach((m) => queueMark(inp.dataset.gm, m.student_id, v == null ? null : Math.round(v * 100) / 100));
+      await flushMarks(); App.toast("Group mark saved for every member");
+    }));
+  }
+  async function editGroup(g) {
+    const n = S.groups.length + 1;
+    const d = await App.dialog({ title: g ? "Edit Group" : "New Group", ic: g ? "edit" : "plus", okText: g ? "Save" : "Create Group", html: true,
+      body: `<label>Group Name</label><input id="gn" maxlength="40" value="${esc(g?.name || `Group ${App.pad2(n)}`)}" /><div class="field-gap"></div>
+        <label>Project Title <span class="faint">(optional)</span></label><input id="gt" maxlength="160" value="${esc(g?.title || "")}" placeholder="e.g. Online Library System" />`,
+      validate: (m) => (!m.querySelector("#gn").value.trim() ? "Type a group name." : null) });
+    if (!d) return;
+    const row = { name: d.querySelector("#gn").value.trim(), title: d.querySelector("#gt").value.trim() || null };
+    try { if (g) await q(sb.from("groups").update(row).eq("id", g.id)); else await q(sb.from("groups").insert({ ...row, section_id: S.sec.id, sort: n })); await loadGroups(); drawSection(); } catch (x) { fail(x); }
+  }
+  async function autoGroups() {
+    const mg = maxGroups(), inGroup = new Set(S.members.map((m) => m.student_id)), free = S.students.filter((s) => !inGroup.has(s.student_id));
+    if (!free.length) return App.toast("Every student is already in a group");
+    const d = await App.dialog({ title: "Auto-Create Groups", ic: "zap", okText: "Create Groups", html: true,
+      body: `<p>${free.length} students are not in a group yet.</p><div class="grid cols-2"><div><label>Number of Groups</label><input id="ag_n" type="number" min="1" max="${mg}" value="${Math.min(mg, Math.max(1, Math.ceil(free.length / 4)))}" /><p class="hint">Up to ${mg} for this section.</p></div>
+        <div><label>Order</label><select id="ag_o"><option value="seq">Student list order</option><option value="rand">Random</option></select></div></div>` });
+    if (!d) return;
+    const n = Math.max(1, Math.min(mg, +d.querySelector("#ag_n").value || 1)), list = [...free];
+    if (d.querySelector("#ag_o").value === "rand") for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+    try {
+      const have = S.groups.length, need = Math.max(0, n - have);
+      if (need) await q(sb.from("groups").insert(Array.from({ length: need }, (_, k) => ({ section_id: S.sec.id, name: `Group ${App.pad2(have + k + 1)}`, sort: have + k + 1 }))));
+      await loadGroups();
+      const gs = S.groups.slice(0, n), size = Object.fromEntries(gs.map((g) => [g.id, S.members.filter((m) => m.group_id === g.id).length]));
+      const rows = list.map((s) => { const g = gs.reduce((a, b) => (size[b.id] < size[a.id] ? b : a)); size[g.id]++; return { group_id: g.id, section_id: S.sec.id, student_id: s.student_id }; });
+      for (let i = 0; i < rows.length; i += 500) await q(sb.from("group_members").insert(rows.slice(i, i + 500)));
+      await loadGroups(); drawSection(); App.toast(`${rows.length} students placed in ${n} groups`);
+    } catch (x) { fail(x); }
+  }
+
+  // ---------- Results tab
+  function tabResults(X) {
+    const ui = UI[S.sec.id], R = allResults(), scale = [...(S.sec.grade_scale || Grade.AIUB_SCALE)].sort((a, b) => b.min - a.min);
+    if (!S.assess.length) { $("#tab").innerHTML = `<div class="card"><div class="empty"><div class="ic">${icon("chart")}</div><h3>No Results Yet</h3><p>Set up the assessment plan in the Marks tab, then enter marks — results and grades appear here.</p><button class="btn" id="tomarks">${icon("book")} Go to Marks</button></div></div>`; $("#tomarks").onclick = () => go(`#/section/${S.sec.id}/marks`); return; }
+    const list = S.students.map((s, i) => { const r = R[s.student_id], fin = r.complete || !!r.grade?.special;
+      return { s, i, r, fin, key: fin ? r.overall : r.standing ?? 0, g: fin ? r.grade : r.standingGrade }; });
+    const anyOpen = list.some((x) => !x.fin);
+    const totals = list.map((x) => x.key), avg = totals.length ? totals.reduce((n, x) => n + x, 0) / totals.length : null;
+    const pass = list.filter((x) => x.g && x.g.grade !== "F" && !x.g.special).length;
+    const dist = scale.map((g) => ({ g: g.grade, n: list.filter((x) => x.g?.grade === g.grade).length })), dmax = Math.max(1, ...dist.map((d) => d.n));
+    const coCodes = [...new Set(list.flatMap((x) => x.r.coList.map((c) => c.code)))];
+    const coSum = coCodes.map((code) => { const xs = list.map((x) => x.r.coList.find((c) => c.code === code)).filter((c) => c && c.pct != null);
+      return { code, n: xs.length, att: xs.filter((c) => c.attained).length, avg: xs.length ? Math.round(xs.reduce((a, c) => a + c.pct, 0) / xs.length) : null }; });
+    const sorters = { seq: (a, b) => a.i - b.i, high: (a, b) => b.key - a.key, low: (a, b) => a.key - b.key, id: (a, b) => a.s.student_id.localeCompare(b.s.student_id) };
+    list.sort(sorters[ui.rsort] || sorters.seq);
+    $("#tab").innerHTML = `
+      <div class="card" style="margin-bottom:20px"><div class="row center-y" style="gap:16px">
+        <div class="stat" style="border:0;box-shadow:none;padding:0;background:none"><div class="ic ${S.sec.portfolio_published ? "green" : ""}">${icon(S.sec.portfolio_published ? "eye" : "eyeoff")}</div></div>
+        <div class="grow"><b>${S.sec.portfolio_published ? "Portfolios are published" : "Portfolios are not published yet"}</b>
+          <div class="small muted">${S.sec.portfolio_published ? "Students see their marks, grade, COs and attendance in the Student Portal by typing their ID. Items marked Hidden in the plan are not shown." : "Students can still mark attendance. Publish when you want them to see their marks and grades."}</div></div>
+        <label class="switch" style="align-items:center"><input type="checkbox" id="pub" ${S.sec.portfolio_published ? "checked" : ""} /> <b>Show to Students</b></label></div></div>
+      <div class="stats" style="margin-bottom:20px">
+        <div class="stat"><div class="ic">${icon("chart")}</div><div><div class="k">Section Average${anyOpen ? " (So Far)" : ""}</div><div class="v">${fmt(avg)}</div></div></div>
+        <div class="stat"><div class="ic green">${icon("zap")}</div><div><div class="k">Highest</div><div class="v">${fmt(Math.max(...totals))}</div></div></div>
+        <div class="stat"><div class="ic amber">${icon("target")}</div><div><div class="k">Lowest</div><div class="v">${fmt(Math.min(...totals))}</div></div></div>
+        <div class="stat"><div class="ic violet">${icon("check")}</div><div><div class="k">Passing (D or Above)</div><div class="v">${pass}<small> / ${list.length}</small></div></div></div></div>
+      <div class="grid cols-2" style="margin-bottom:20px;align-items:start">
+        <div class="card"><div class="card-head"><div><h2>Grade Distribution</h2><div class="sub">${anyOpen ? "Current standing — based on the marks entered so far" : "Final grades"}</div></div></div>
+          <div class="dist">${dist.map((d) => `<div class="d ${d.g === "F" ? "F" : ""}"><b>${d.n}</b><div class="f" style="height:${(d.n / dmax) * 75}%"></div><span>${esc(d.g)}</span></div>`).join("")}</div></div>
+        <div class="card"><div class="card-head"><div><h2>Course Outcome Attainment</h2><div class="sub">Students reaching ${S.sec.course.co_target ?? 60}% of each CO's marks</div></div></div>
+          ${coSum.length ? `<div class="bands">${coSum.map((c) => { const p = c.n ? Math.round((c.att / c.n) * 100) : 0; return `<div class="band" style="grid-template-columns:56px 1fr 120px"><b style="color:var(--excused)">${esc(c.code)}</b>
+            <div class="progress ${p < 50 ? "bad" : p < 70 ? "warn" : ""}"><span style="width:${p}%"></span></div><span class="num small">${c.att}/${c.n} · <b>${p}%</b></span></div>`; }).join("")}</div>
+            <p class="hint">Average CO score: ${coSum.map((c) => `${esc(c.code)} ${c.avg == null ? "—" : c.avg + "%"}`).join(" · ")}</p>`
+          : `<div class="empty" style="padding:24px"><p style="margin:0">Tag assessments with a CO in the Assessment Plan to see attainment.</p></div>`}</div></div>
+      <div class="card flush"><div class="card-head" style="padding-bottom:16px"><div class="row center-y grow">
+          <div class="search" style="flex:1;min-width:200px;max-width:320px">${icon("search")}<input id="rq" placeholder="Search ID or Name" value="${esc(ui.q)}" /></div>
+          <select id="rs" style="width:auto"><option value="seq">List Order</option><option value="high">Highest Total</option><option value="low">Lowest Total</option><option value="id">Student ID</option></select></div>
+        <button class="btn sm secondary" id="rx">${icon("download")} Export Results</button></div>
+        <div class="table-wrap keep" style="max-height:640px;border-radius:0;border-left:0;border-right:0;border-bottom:0"><table class="res-table"><thead><tr><th>Student ID</th><th>Name</th>
+          ${S.terms.map((t) => `<th class="num">${esc(t.name)}</th>`).join("")}<th class="num" title="All marks so far, out of 100">Grand Total</th><th class="num" title="Score on the marks entered so far">Standing</th><th>Grade</th><th class="num">Point</th><th class="num">Attendance</th>${coCodes.length ? `<th class="num">COs</th>` : ""}<th>Special</th><th></th></tr></thead>
+          <tbody id="rtb">${list.map(({ s, r, fin, g }) => `<tr data-q="${esc((s.student_id + " " + s.name).toLowerCase())}">
+            <td><b>${esc(s.student_id)}</b></td><td>${esc(s.name)}</td>
+            ${r.terms.map((t) => `<td class="num">${t.empty ? "—" : `${fmt(t.total)} <span class="faint xs">${esc(t.grade?.grade || "")}</span>`}</td>`).join("")}
+            <td class="num"><b style="font-size:15px">${fmt(r.overall)}</b></td>
+            <td class="num">${r.standing == null ? "—" : `${fmt(r.standing)}%`}</td>
+            <td>${!g ? `<span class="faint">—</span>` : `<span class="grade-pill sm ${gradeTone(g?.grade)}" style="${fin ? "" : "background:transparent;box-shadow:inset 0 0 0 1.5px currentColor"}" title="${fin ? "Final grade" : "Current standing — not final"}">${esc(g?.grade || "—")}</span>${fin ? "" : ` <span class="faint xs">so far</span>`}`}</td>
+            <td class="num">${fin && g?.point != null ? (+g.point).toFixed(2) : "—"}</td>
+            <td class="num ${App.pctClass(r.attPct, X.min)}">${r.attPct == null ? "—" : r.attPct + "%"}</td>
+            ${coCodes.length ? `<td class="num">${r.coAttained} / ${r.coList.length}</td>` : ""}
+            <td><select data-sg="${s.id}" style="width:auto;min-height:32px;padding:3px 30px 3px 9px;font-size:13px"><option value="">—</option>${["I", "W", "UW"].map((g) => `<option ${s.special_grade === g ? "selected" : ""}>${g}</option>`).join("")}</select></td>
+            <td class="actions"><button class="btn sm secondary" data-pf="${esc(s.student_id)}">${icon("book")} Portfolio</button></td></tr>`).join("")}</tbody></table></div></div>`;
+    $("#rs").value = ui.rsort || "seq"; $("#rs").onchange = (e) => { ui.rsort = e.target.value; drawSection(); };
+    const f = () => { const v = ui.q.toLowerCase(); $$("#rtb tr").forEach((r) => (r.style.display = !v || r.dataset.q.includes(v) ? "" : "none")); };
+    $("#rq").oninput = (e) => { ui.q = e.target.value; f(); }; f();
+    $("#rx").onclick = exportExcel;
+    $("#pub").onchange = (e) => setPublished(e.target.checked);
+    $$("[data-pf]").forEach((b) => (b.onclick = () => portfolioModal(b.dataset.pf)));
+    $$("[data-sg]").forEach((sel) => (sel.onchange = async () => { const s = S.students.find((x) => x.id === sel.dataset.sg), v = sel.value || null;
+      try { await q(sb.from("students").update({ special_grade: v }).eq("id", s.id)); s.special_grade = v; drawSection(); App.toast(v ? `${s.student_id} marked ${v}` : "Special grade removed"); } catch (x) { fail(x); } }));
+  }
+  async function setPublished(on) {
+    if (on && !(await App.confirm("Publish portfolios?", "Students will see their marks, grade, course outcomes and attendance in the Student Portal by typing their Student ID. Items marked Hidden stay hidden.", "Publish", false))) return drawSection();
+    try { await q(sb.from("sections").update({ portfolio_published: on }).eq("id", S.sec.id)); S.sec.portfolio_published = on; drawSection(); App.toast(on ? "Portfolios published" : "Portfolios hidden from students"); } catch (x) { fail(x); }
+  }
+
+  // ---------- Grading & course settings (part of the Settings tab)
+  function gradingCards(part = "right") {
+    const sec = S.sec, c = sec.course, scale = [...(sec.grade_scale || Grade.AIUB_SCALE)].sort((a, b) => b.min - a.min);
+    if (part === "left") return `<div class="card"><div class="card-head"><div><h2>Course Outcomes</h2><div class="sub">Shared by every section of ${esc(c.code)}</div></div></div>
+        <div class="grid cols-2" style="margin-bottom:14px"><div><label>Credit Hours</label><input id="co_cr" type="number" min="0" max="10" step="0.5" value="${c.credit_hours ?? ""}" /></div>
+          <div><label>CO Attainment Target (%)</label><input id="co_tg" type="number" min="0" max="100" value="${c.co_target ?? 60}" /></div></div>
+        <div class="stack-sm" id="colist">${(c.cos || []).map((o, i) => coRow(o, i)).join("")}</div>
+        <button class="btn sm secondary" id="coadd" style="margin-top:12px">${icon("plus")} Add Outcome</button>
+        <div style="height:16px"></div><button class="btn" id="saveco">${icon("check")} Save Course Outcomes</button></div>`;
+    return `<div class="card"><div class="card-head"><div><h2>Student Portfolio</h2><div class="sub">What students see in the Student Portal</div></div></div>
+        <label class="switch"><input type="checkbox" id="st_pub" ${sec.portfolio_published ? "checked" : ""} /><span>Show Portfolio to Students<span class="d">Marks, grade, course outcomes and attendance. Students open the portal and type their Student ID.</span></span></label>
+        <div class="field-gap"></div><label>Instructor Name <span class="faint">(shown to students)</span></label><input id="st_ins" maxlength="120" value="${esc(sec.instructor || "")}" placeholder="e.g. Wahidul Alam Riyad" />
+        <div style="height:16px"></div><button class="btn" id="savepf">${icon("check")} Save</button></div>
+      <div class="card"><div class="card-head"><div><h2>Grading</h2><div class="sub">Grade scale for this section</div></div><button class="btn sm ghost" id="gsreset">${icon("refresh")} AIUB Default</button></div>
+        <div class="table-wrap"><table class="plan-table" id="gst"><thead><tr><th>Grade</th><th class="num">From (%)</th><th class="num">Grade Point</th><th></th></tr></thead><tbody>
+          ${scale.map((g, i) => `<tr data-i="${i}"><td><input data-k="grade" value="${esc(g.grade)}" maxlength="3" style="width:70px" /></td><td><input data-k="min" type="number" min="0" max="100" value="${g.min}" style="width:90px" /></td>
+            <td><input data-k="point" type="number" min="0" max="5" step="0.01" value="${(+g.point).toFixed(2)}" style="width:90px" /></td><td><button class="icon-btn danger" data-gsdel="${i}">${icon("trash")}</button></td></tr>`).join("")}</tbody></table></div>
+        <button class="btn sm secondary" id="gsadd" style="margin-top:10px">${icon("plus")} Add Grade</button>
+        <div class="field-gap"></div><label class="switch"><input type="checkbox" id="st_round" ${sec.round_total ? "checked" : ""} /><span>Round Totals Before Grading<span class="d">89.5 becomes 90 (A+). Turn off to grade the exact total.</span></span></label>
+        <div style="height:16px"></div><button class="btn" id="savegs">${icon("check")} Save Grading</button></div>`;
+  }
+  const coRow = (o, i) => `<div data-co="${i}" style="display:grid;gap:8px;padding:14px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border)">
+      <div class="row center-y" style="gap:8px"><input data-k="code" value="${esc(o.code || "")}" placeholder="CO1" style="width:84px;font-weight:700" title="Code" />
+        <input data-k="po" value="${esc(o.po || "")}" placeholder="PO (e.g. PO-c-1)" style="flex:1;min-width:110px" title="Program Outcome" />
+        <input data-k="level" value="${esc(o.level || "")}" placeholder="Level (e.g. C4)" style="flex:1;min-width:100px" title="Domain level" />
+        <button class="icon-btn danger" data-codel="${i}" title="Remove">${icon("trash")}</button></div>
+      <textarea data-k="statement" placeholder="Statement — what students will be able to do" style="min-height:64px">${esc(o.statement || "")}</textarea></div>`;
+  function bindGrading() {
+    const sec = S.sec, c = sec.course;
+    $("#savepf").onclick = async () => { const on = $("#st_pub").checked;
+      if (on && !sec.portfolio_published && !(await App.confirm("Publish portfolios?", "Students will see their marks, grade, course outcomes and attendance by typing their Student ID.", "Publish", false))) return;
+      const upd = { portfolio_published: on, instructor: $("#st_ins").value.trim() || null };
+      try { await q(sb.from("sections").update(upd).eq("id", sec.id)); Object.assign(sec, upd); try { localStorage.setItem("att_instructor", upd.instructor || ""); } catch {} drawSection(); App.toast("Saved"); } catch (x) { fail(x); } };
+    const readScale = () => $$("#gst tbody tr").map((tr) => ({ grade: tr.querySelector("[data-k=grade]").value.trim(), min: +tr.querySelector("[data-k=min]").value, point: +tr.querySelector("[data-k=point]").value })).filter((g) => g.grade);
+    $("#gsreset").onclick = () => { sec.grade_scale = Grade.AIUB_SCALE.map((g) => ({ ...g })); tabSettings(); App.toast("AIUB scale loaded — press Save Grading"); };
+    $("#gsadd").onclick = () => { sec.grade_scale = [...readScale(), { grade: "", min: 0, point: 0 }]; tabSettings(); };
+    $$("[data-gsdel]").forEach((b) => (b.onclick = () => { const s = readScale(); s.splice(+b.dataset.gsdel, 1); sec.grade_scale = s; tabSettings(); }));
+    $("#savegs").onclick = async () => { const s = readScale().sort((a, b) => b.min - a.min);
+      if (!s.length || !s.some((g) => g.min === 0)) return App.toast("The lowest grade must start at 0%", true);
+      try { await q(sb.from("sections").update({ grade_scale: s, round_total: $("#st_round").checked }).eq("id", sec.id)); sec.grade_scale = s; sec.round_total = $("#st_round").checked; drawSection(); App.toast("Grading saved"); } catch (x) { fail(x); } };
+    const readCos = () => $$("#colist [data-co]").map((r) => ({ code: r.querySelector("[data-k=code]").value.trim().toUpperCase(), statement: r.querySelector("[data-k=statement]").value.trim(), po: r.querySelector("[data-k=po]").value.trim(), level: r.querySelector("[data-k=level]").value.trim() })).filter((o) => o.code);
+    $("#coadd").onclick = () => { const list = readCos(); list.push({ code: `CO${list.length + 1}`, statement: "" }); $("#colist").innerHTML = list.map(coRow).join(""); bindCoDel(); };
+    const bindCoDel = () => $$("[data-codel]").forEach((b) => (b.onclick = () => { const list = readCos(); list.splice(+b.dataset.codel, 1); $("#colist").innerHTML = list.map(coRow).join(""); bindCoDel(); }));
+    bindCoDel();
+    $("#saveco").onclick = async () => { const upd = { cos: readCos(), credit_hours: $("#co_cr").value === "" ? null : +$("#co_cr").value, co_target: Math.max(0, Math.min(100, +$("#co_tg").value || 60)) };
+      try { await q(sb.from("courses").update(upd).eq("id", c.id)); Object.assign(c, upd); drawSection(); App.toast("Course outcomes saved"); } catch (x) { fail(x); } };
+  }
 
   // ------------------------------------------------------------------ router
   async function route() {

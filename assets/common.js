@@ -142,7 +142,7 @@
         return id;
       } catch { return null; }
     },
-    studentLink(token) { const base = location.href.replace(/[^/]*([?#].*)?$/, ""); return `${base}attend.html?s=${encodeURIComponent(token)}`; },
+    studentLink() { return location.href.replace(/[^/]*([?#].*)?$/, ""); },   // the Student Portal (one link for every course)
     async copy(text, msg = "Copied") { try { await navigator.clipboard.writeText(text); App.toast(msg); } catch { App.toast("Copy failed — select and copy manually", true); } },
 
     // Supabase returns at most 1000 rows per request; page through larger results
