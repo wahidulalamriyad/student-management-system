@@ -39,8 +39,10 @@
     const name = myName() || user?.email || "";
     return `<header class="topbar">
       <a class="brand" href="#/">${App.brand(cfg.INSTITUTION || "")}</a>
+      <nav class="topnav" aria-label="Main">${[["#/", "grid", "Sections"], ["#/setup", "layers", "Intakes & Courses"], ["#/profile", "user", "My Profile"]].map(([h, ic, l]) => {
+        const here = location.hash || "#/", on = h === "#/" ? !/^#\/(setup|profile)/.test(here) : here.startsWith(h);
+        return `<a href="${h}" class="${on ? "on" : ""}" ${on ? 'aria-current="page"' : ""} title="${l}">${icon(ic)}<span class="hide-sm">${l}</span></a>`; }).join("")}</nav>
       <div class="spacer"></div>
-      <a class="btn ghost sm" href="#/setup" title="Intakes & Courses">${icon("layers")}<span class="hide-sm">Intakes & Courses</span></a>
       ${App.theme.button()}
       <div class="menu-wrap"><button class="avatar-btn" id="me" title="${esc(name)}" aria-haspopup="menu">${App.avatar(PROFILE?.photo_url, name, 40)}</button></div>
     </header>`;
@@ -51,7 +53,6 @@
       e.stopPropagation(); const w = me.parentElement, open = w.querySelector(".menu"); if (open) return open.remove();
       w.insertAdjacentHTML("beforeend", `<div class="menu" role="menu"><div class="who" style="display:flex;gap:12px;align-items:center">${App.avatar(PROFILE?.photo_url, myName() || user.email, 42)}
           <div style="min-width:0"><b style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(myName() || "Your Name")}</b><span class="muted xs" style="display:block;overflow:hidden;text-overflow:ellipsis">${esc(user.email)}</span></div></div>
-        <a href="#/profile">${icon("user")} My Profile</a><a href="#/">${icon("grid")} All Sections</a><a href="#/setup">${icon("layers")} Intakes & Courses</a>
         <button data-m="pw">${icon("key")} Change Password</button><div class="sep"></div><button data-m="out" class="danger">${icon("logout")} Sign Out</button></div>`);
       const m = w.querySelector(".menu");
       m.onclick = async (ev) => { const b = ev.target.closest("[data-m]"); m.remove(); if (!b) return; if (b.dataset.m === "out") { await sb.auth.signOut(); PROFILE = null; location.hash = ""; } else changePassword(); };
@@ -182,9 +183,7 @@
     if (P.aiub_profile_url && !P.links.aiub) P.links.aiub = P.aiub_profile_url;
     if (!P.email) P.email = user.email;
     const draw = () => {
-      page(`<div class="crumbs"><a href="#/">${icon("back")} All Sections</a></div>
-      <div class="page-head"><div><h1>My Profile</h1><p class="muted" style="margin:6px 0 0">Students see your photo, name, research interests, bio and links in the Student Portal.</p></div>
-        <div class="actions"><button class="btn" id="psave">${icon("check")} Save Profile</button></div></div>
+      page(`      <div class="page-head"><div><h1>My Profile</h1><p class="muted" style="margin:6px 0 0">Students see your photo, name, research interests, bio and links in the Student Portal.</p></div></div>
       <div class="grid side">
         <div class="stack">
           <div class="card"><div class="card-head"><div><h2>Profile Photo</h2><div class="sub">A clear, front-facing photo. JPG, PNG or WebP, up to 2 MB.</div></div></div>
@@ -254,7 +253,7 @@
       $("#pup").onclick = () => $("#pfile").click();
       $("#pfile").onchange = (e) => e.target.files[0] && uploadPhoto(e.target.files[0]);
       const pd = $("#pdel"); if (pd) pd.onclick = async () => { if (!(await App.confirm("Remove your photo?", "Students will see your initials instead.", "Remove"))) return; collect(); await removePhoto(P.photo_url); P.photo_url = null; await save(true); };
-      $("#psave").onclick = () => save(); $("#psave2").onclick = () => save();
+      $("#psave2").onclick = () => save();
       if (dirty) { const d = $("#pdirty"); d.innerHTML = `${icon("alert")} Unsaved changes`; }
       preview();
     };
@@ -340,7 +339,7 @@
     page(`
       <div class="page-head"><div><div class="eyebrow">${icon("calendar")} ${new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: cfg.TIME_ZONE || undefined })}</div>
         <h1>${hello} 👋</h1></div>
-        <div class="actions"><a class="btn secondary" href="#/setup">${icon("layers")} Intakes & Courses</a><button class="btn" id="newsec">${icon("plus")} New Section</button></div></div>
+        <div class="actions"><button class="btn" id="newsec">${icon("plus")} New Section</button></div></div>
       ${live.map((s) => `<div class="live" style="margin-bottom:16px"><span class="live-dot"></span><div class="grow"><b>Attendance Is Open</b> · ${esc(s.course.code)} Section ${esc(s.name)} — ${App.classLabel(st[s.id].open.number)}</div>
         <a class="btn green sm" href="pin.html?class=${st[s.id].open.id}" target="_blank" rel="noopener">${icon("external")} PIN Screen</a></div>`).join("")}
       <div class="stats">
@@ -429,8 +428,7 @@
     const [intakes, courses, sections] = await Promise.all([
       q(sb.from("intakes").select("*").order("created_at", { ascending: false })), q(sb.from("courses").select("*").order("code")), q(sb.from("sections").select("intake_id, course_id")) ]);
     const nI = (id) => sections.filter((s) => s.intake_id === id).length, nC = (id) => sections.filter((s) => s.course_id === id).length;
-    page(`<div class="crumbs"><a href="#/">${icon("back")} All Sections</a></div>
-      <div class="page-head"><div><h1>Intakes & Courses</h1><p class="muted" style="margin:6px 0 0">The building blocks for your sections. Deleting one also deletes its sections.</p></div></div>
+    page(`      <div class="page-head"><div><h1>Intakes & Courses</h1><p class="muted" style="margin:6px 0 0">The building blocks for your sections. Deleting one also deletes its sections.</p></div></div>
       <div class="grid cols-2">
         <div class="card"><div class="card-head"><div><h2>Intakes</h2><div class="sub">e.g. Fall 2026-27, Spring 2026-27</div></div></div>
           <form id="fin" class="row" style="margin-bottom:14px"><div class="f"><input id="in_nm" placeholder="New Intake Name" maxlength="60" required /></div><button class="btn">${icon("plus")} Add</button></form>
@@ -519,10 +517,9 @@
     const nextC = open || S.terms.flatMap((t) => t.classes).find((c) => !isHeld(c));
     const scrollY = scrollY_(), kw = $(".table-wrap.keep"), wrapScroll = kw && drawSection.tab === curTab + sec.id ? [kw.scrollLeft, kw.scrollTop] : null;
     drawSection.tab = curTab + sec.id;
-    const tabs = [["overview", "Overview", "chart"], ["classes", "Classes", "calendar", classes.length], ["students", "Students", "users", students.length], ["sheet", "Attendance", "grid"],
+    const tabs = [["overview", "Overview", "chart"], ["classes", "Classes", "calendar"], ["students", "Students", "users"], ["sheet", "Attendance", "grid"],
       ["marks", "Marks", "book", S.assess.length || null], ["groups", "Groups", "layers", S.groups.length || null], ["results", "Results", "target"], ["log", "Check-In Log", "list", S.att.length], ["settings", "Settings", "settings"]];
-    page(`<div class="crumbs"><a href="#/">${icon("back")} All Sections</a></div>
-      <div class="page-head"><div><div class="eyebrow"><span class="badge blue">${esc(sec.course.code)}</span>${sec.class_code ? `<span>Class Code ${esc(sec.class_code)}</span><span>·</span>` : ""}<span>${esc(sec.intake.name)}</span><span>·</span><span class="badge ${sec.portfolio_published ? "green" : ""}" title="Student Portfolio">${icon(sec.portfolio_published ? "eye" : "eyeoff")} Portfolio ${sec.portfolio_published ? "Published" : "Not Published"}</span></div>
+    page(`      <div class="page-head"><div><div class="eyebrow"><span class="badge blue">${esc(sec.course.code)}</span>${sec.class_code ? `<span>Class Code ${esc(sec.class_code)}</span><span>·</span>` : ""}<span>${esc(sec.intake.name)}</span><span>·</span><a class="badge ${sec.portfolio_published ? "green" : ""}" href="#/section/${sec.id}/settings" title="Change in Settings">${icon(sec.portfolio_published ? "eye" : "eyeoff")} Portfolio ${sec.portfolio_published ? "Published" : "Not Published"}</a></div>
         <h1>${esc(sec.course.title)} <span class="muted" style="font-weight:600">· Section ${esc(sec.name)}</span></h1></div>
         <div class="actions"><button class="btn secondary" id="share">${icon("qr")} Student Portal</button>
           <button class="btn secondary" id="xls">${icon("download")} Export Excel</button>
@@ -581,19 +578,18 @@
             <div class="bar-labels">${allCols.map(({ t, c }) => `<span title="${esc(t.name)} · ${App.classLabel(c.number)}">${esc((t.name.trim()[0] || "").toUpperCase())}${App.pad2(c.number)}</span>`).join("")}</div>`
           : `<div class="empty"><div class="ic">${icon("chart")}</div><h3>No Classes Held Yet</h3><p>Start the PIN for your first class — the chart fills in as students check in.</p></div>`}
         </div>
-        <div class="card"><div class="card-head"><div><h2>Students Below ${min}%</h2><div class="sub">${X.risk.length ? "Consider Contacting These Students" : "Everyone is above the minimum — great!"}</div></div>
+        ${X.risk.length ? `        <div class="card"><div class="card-head"><div><h2>Students Below ${min}%</h2><div class="sub">${X.risk.length ? "Consider Contacting These Students" : "Everyone is above the minimum — great!"}</div></div>
           ${X.risk.length ? `<button class="btn sm secondary" id="cprisk">${icon("copy")} Copy IDs</button>` : ""}</div>
           ${X.risk.length ? `<div class="table-wrap" style="max-height:420px"><table><thead><tr><th>Student ID</th><th>Name</th><th class="num">Attended</th><th class="num">Attendance</th></tr></thead><tbody>
             ${X.risk.sort((a, b) => X.per[a.student_id].p - X.per[b.student_id].p).map((s) => { const p = X.per[s.student_id]; return `<tr class="clickable" data-stu="${esc(s.student_id)}"><td><b>${esc(s.student_id)}</b></td><td>${esc(s.name)}</td>
               <td class="num">${p.a} / ${p.h}</td><td><div class="pct-cell">${App.progress(p.p, min)}<b class="${App.pctClass(p.p, min)}">${p.p}%</b></div></td></tr>`; }).join("")}</tbody></table></div>`
           : `<div class="empty" style="padding:24px"><div class="ic" style="background:var(--success-soft);color:var(--success)">${icon("check")}</div><p style="margin:0">No students are at risk${X.held.length ? "" : " yet"}.</p></div>`}
-        </div></div>
+        </div>` : ""}</div>
       <div class="stack">
         ${S.assess.length ? (() => { const R = Object.values(allResults()), key = (r) => (r.complete || r.grade?.special ? r.overall : r.standing), gr = (r) => (r.complete || r.grade?.special ? r.grade : r.standingGrade);
           const vals = R.filter((r) => r.complete || r.grade?.special || r.standing != null).map(key).filter((x) => x != null), av = vals.length ? vals.reduce((n, x) => n + x, 0) / vals.length : null, f = R.filter((r) => gr(r)?.grade === "F").length, open_ = R.some((r) => !r.complete);
-          return `<div class="card"><div class="card-head" style="margin-bottom:12px"><h2>Marks & Grades</h2><button class="btn sm soft" id="tores">${icon("target")} Results</button></div>
-            <ul class="list"><li>${icon("chart")}<span class="grow">Section Average${open_ ? " (So Far)" : ""}</span><b>${av == null ? "—" : fmt(av) + "%"}</b></li><li>${icon("alert")}<span class="grow">${open_ ? "Standing at F" : "Failing (F)"}</span><b class="${f ? "pct-bad" : ""}">${f}</b></li>
-            <li>${icon(S.sec.portfolio_published ? "eye" : "eyeoff")}<span class="grow">Portfolio</span><b>${S.sec.portfolio_published ? "Published" : "Not Published"}</b></li></ul></div>`; })() : `<div class="card"><h2 style="margin-bottom:8px">Marks & Grades</h2><p class="small muted">No assessment plan yet.</p><button class="btn sm" id="tomarks2">${icon("book")} Set Up Marks</button></div>`}
+          return `<div class="card"><div class="card-head" style="margin-bottom:12px"><h2>Marks & Grades</h2></div>
+            <ul class="list"><li>${icon("chart")}<span class="grow">Section Average${open_ ? " (So Far)" : ""}</span><b>${av == null ? "—" : fmt(av) + "%"}</b></li><li>${icon("alert")}<span class="grow">${open_ ? "Standing at F" : "Failing (F)"}</span><b class="${f ? "pct-bad" : ""}">${f}</b></li></ul></div>`; })() : `<div class="card"><h2 style="margin-bottom:8px">Marks & Grades</h2><p class="small muted">No assessment plan yet.</p><button class="btn sm" id="tomarks2">${icon("book")} Set Up Marks</button></div>`}
         <div class="card"><h2 style="margin-bottom:18px">Attendance Distribution</h2><div class="bands">${bands.map(([l, n, c]) => `<div class="band"><span class="muted">${l}</span>
           <div class="progress ${c === "green" ? "" : c}"><span style="width:${students.length ? (n / students.length) * 100 : 0}%"></span></div><b class="num">${n}</b></div>`).join("")}</div></div>
         <div class="card"><h2 style="margin-bottom:14px">Records</h2><ul class="list">
@@ -624,9 +620,9 @@
         ${t.classes.map((c) => { const r = Object.values(recs(c.id)), n = r.length, l = r.filter((x) => x.status === "late").length, o = isOpen(c), hd = isHeld(c); return `<tr>
           <td><b>${App.classLabel(c.number)}</b></td><td class="nowrap">${c.class_date ? App.fmtDay(c.class_date) : `<span class="faint">—</span>`}</td>
           <td>${c.title ? esc(c.title) : `<span class="faint">—</span>`}</td>
-          <td>${o ? `<span class="badge green"><span class="dot"></span> Open</span>` : hd ? `<span class="badge blue">Held</span>` : `<span class="badge">Not Held</span>`}</td>
+          <td>${o ? `<span class="badge green"><span class="dot"></span> Open</span>` : hd ? `<span class="badge blue">Held</span>` : c.id === nextId ? `<span class="badge amber">Up Next</span>` : `<span class="badge">Not Held</span>`}</td>
           <td>${hd ? `<div class="pct-cell">${App.progress(pct(n, students.length), sec.min_attendance_pct)}<b>${n}/${students.length}</b></div>${l ? `<div class="xs muted num">${l} late</div>` : ""}` : `<span class="faint">—</span>`}</td>
-          <td class="actions"><a class="btn sm ${o ? "green" : c.id === nextId ? "" : "secondary"}" href="pin.html?class=${c.id}" target="_blank" rel="noopener">${icon(o ? "external" : "play")} ${o ? "PIN Screen" : hd ? "Reopen" : "Start PIN"}</a>
+          <td class="actions">${c.id === nextId ? "" : `<a class="btn sm secondary" href="pin.html?class=${c.id}" target="_blank" rel="noopener">${icon("play")} ${hd ? "Reopen" : "Start PIN"}</a>`}
             <button class="icon-btn" data-cls-menu="${c.id}" title="More">${icon("dots")}</button></td></tr>`; }).join("")}</tbody></table></div>`
         : `<div class="empty" style="padding:24px"><p style="margin:0">No classes in this term yet.</p></div>`}</div>`; }).join("")}
       <div class="card"><div class="card-head"><div><h2>Add a Term</h2><div class="sub">For example a make-up term or a lab block.</div></div></div>
@@ -881,7 +877,7 @@
         <select id="tsel" style="width:auto;min-width:150px"><option value="">All Terms</option>${terms.map((t) => `<option value="${t.id}" ${t.id === ui.term ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select>
         <div class="search" style="flex:1;min-width:200px;max-width:320px">${icon("search")}<input id="msr" placeholder="Search ID or Name" value="${esc(ui.q)}" /></div>
         <label class="switch" style="align-items:center"><input type="checkbox" id="riskonly" ${ui.riskOnly ? "checked" : ""} /> Below ${min}% Only</label></div>
-        <div class="btn-group"><button class="btn sm secondary" id="print">${icon("printer")} Print</button><button class="btn sm secondary" id="xls2">${icon("download")} Excel</button></div></div>
+        <div class="btn-group"><button class="btn sm secondary" id="print">${icon("printer")} Print</button></div></div>
       <div style="padding:0 24px 16px" class="legend"><span><span class="mk P">P</span>Present</span><span><span class="mk L">L</span>Late</span><span><span class="mk E">E</span>Excused</span><span><span class="mk A">A</span>Absent</span><span><span class="mk N"></span>Not Held</span><span><span class="mk P manual">P</span>Marked by You</span><span class="faint">· Click a cell to change it, or a class number for bulk actions</span></div>
       ${students.length && cols.length ? `<div class="table-wrap keep" style="max-height:640px;border-radius:0;border-left:0;border-right:0;border-bottom:0"><table class="matrix"><thead>
         <tr><th class="sticky">Student ID</th><th class="name sticky2">Name</th>${cols.map(({ t, c }, i) => `<th class="cls ${isHeld(c) ? "" : "nh"} ${i === 0 || cols[i - 1].t.id !== t.id ? "tstart" : ""}" data-cls="${c.id}" title="${esc(t.name)} · ${App.classLabel(c.number)}${c.class_date ? " · " + App.fmtDay(c.class_date) : ""}${c.title ? " · " + esc(c.title) : ""}">${App.pad2(c.number)}<small>${esc(String(t.name).split(" ")[0])}</small></th>`).join("")}<th class="num">Total</th><th class="num" style="padding-right:16px">%</th></tr></thead>
@@ -897,7 +893,7 @@
     $("#riskonly").onchange = (e) => { ui.riskOnly = e.target.checked; drawSection(); };
     const filterRows = () => { const v = ui.q.toLowerCase(); $$("#mtb tr").forEach((r) => (r.style.display = !v || r.dataset.q.includes(v) ? "" : "none")); };
     $("#msr").oninput = (e) => { ui.q = e.target.value; filterRows(); }; filterRows();
-    $("#xls2").onclick = exportExcel; $("#print").onclick = () => print();
+    $("#print").onclick = () => print();
     $$("#mtb td.cell").forEach((td) => (td.onclick = () => statusPop(td.firstElementChild, td.dataset.c, td.dataset.s, drawSection)));
     $$("th[data-cls]").forEach((th) => (th.onclick = () => classMenu(th, th.dataset.cls)));
   }
@@ -1457,11 +1453,6 @@
     const sorters = { seq: (a, b) => a.i - b.i, high: (a, b) => b.key - a.key, low: (a, b) => a.key - b.key, id: (a, b) => a.s.student_id.localeCompare(b.s.student_id) };
     list.sort(sorters[ui.rsort] || sorters.seq);
     $("#tab").innerHTML = `
-      <div class="card" style="margin-bottom:20px;padding-top:18px;padding-bottom:18px"><div class="row center-y" style="gap:16px">
-        <div class="stat" style="border:0;box-shadow:none;padding:0;background:none;min-height:0"><div class="ic ${S.sec.portfolio_published ? "green" : ""}">${icon(S.sec.portfolio_published ? "eye" : "eyeoff")}</div></div>
-        <div class="grow"><b>${S.sec.portfolio_published ? "Portfolios Are Published" : "Portfolios Are Not Published Yet"}</b>
-          <div class="small muted">${S.sec.portfolio_published ? "Students see their marks, grade, COs and attendance in the Student Portal by typing their ID. Items marked Hidden in the plan are not shown." : "Students can still mark attendance. Publish when you want them to see their marks and grades."}</div></div>
-        <label class="switch" style="align-items:center"><input type="checkbox" id="pub" ${S.sec.portfolio_published ? "checked" : ""} /> <b>Show to Students</b></label></div></div>
       <div class="stats" style="margin-bottom:20px">
         <div class="stat"><div class="ic">${icon("chart")}</div><div><div class="k">Section Average${anyOpen ? " (So Far)" : ""}</div><div class="v">${avg == null ? "—" : fmt(avg)}</div></div></div>
         <div class="stat"><div class="ic green">${icon("zap")}</div><div><div class="k">Highest</div><div class="v">${totals.length ? fmt(Math.max(...totals)) : "—"}</div></div></div>
@@ -1477,8 +1468,7 @@
           : `<div class="empty" style="padding:24px"><p style="margin:0">Tag assessments with a CO in the Assessment Plan to see attainment.</p></div>`}</div></div>
       <div class="card flush"><div class="card-head" style="padding-bottom:16px"><div class="row center-y grow">
           <div class="search" style="flex:1;min-width:200px;max-width:320px">${icon("search")}<input id="rq" placeholder="Search ID or Name" value="${esc(ui.q)}" /></div>
-          <select id="rs" style="width:auto"><option value="seq">List Order</option><option value="high">Highest Total</option><option value="low">Lowest Total</option><option value="id">Student ID</option></select></div>
-        <button class="btn sm secondary" id="rx">${icon("download")} Export Results</button></div>
+          <select id="rs" style="width:auto"><option value="seq">List Order</option><option value="high">Highest Total</option><option value="low">Lowest Total</option><option value="id">Student ID</option></select></div></div>
         <div class="table-wrap keep" style="max-height:640px;border-radius:0;border-left:0;border-right:0;border-bottom:0"><table class="res-table"><thead><tr><th>Student ID</th><th>Name</th>
           ${S.terms.map((t) => `<th class="num">${esc(t.name)}</th>`).join("")}<th class="num" title="All Marks So Far, Out of 100">Grand Total</th><th class="num" title="Score on the Marks Entered So Far">Standing</th><th>Grade</th><th class="num">Point</th><th class="num">Attendance</th>${coCodes.length ? `<th class="num">COs</th>` : ""}<th>Special</th><th></th></tr></thead>
           <tbody id="rtb">${list.map(({ s, r, fin, g }) => `<tr data-q="${esc((s.student_id + " " + s.name).toLowerCase())}">
@@ -1495,8 +1485,6 @@
     $("#rs").value = ui.rsort || "seq"; $("#rs").onchange = (e) => { ui.rsort = e.target.value; drawSection(); };
     const f = () => { const v = ui.q.toLowerCase(); $$("#rtb tr").forEach((r) => (r.style.display = !v || r.dataset.q.includes(v) ? "" : "none")); };
     $("#rq").oninput = (e) => { ui.q = e.target.value; f(); }; f();
-    $("#rx").onclick = exportExcel;
-    $("#pub").onchange = (e) => setPublished(e.target.checked);
     $$("[data-pf]").forEach((b) => (b.onclick = () => portfolioModal(b.dataset.pf)));
     $$("[data-sg]").forEach((sel) => (sel.onchange = async () => { const s = S.students.find((x) => x.id === sel.dataset.sg), v = sel.value || null;
       try { await q(sb.from("students").update({ special_grade: v }).eq("id", s.id)); s.special_grade = v; drawSection(); App.toast(v ? `${s.student_id} marked ${v}` : "Special Grade Removed"); } catch (x) { fail(x); } }));

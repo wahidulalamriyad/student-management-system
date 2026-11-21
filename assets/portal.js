@@ -162,11 +162,11 @@
       if (error) throw error;
       if (data.code === "need_code") { try { localStorage.removeItem(codeKey(tok)); } catch {} return renderCode(tok, code ? data.message : "", back); }
       if (data.ok && code) { try { localStorage.setItem(codeKey(tok), code); } catch {} }
-      if (!data.ok) { shell(`<div class="card"><div class="empty"><div class="ic">${icon("clock")}</div><h3>Not Available Yet</h3><p>${esc(data.message)}</p><a class="btn" href="#/">${icon("back")} My Courses</a></div></div>`, back); $("#back").onclick = () => (location.hash = "#/"); return; }
+      if (!data.ok) { shell(`<div class="card"><div class="empty"><div class="ic">${icon("clock")}</div><h3>Not Available Yet</h3><p>${esc(data.message)}</p></div></div>`, back); $("#back").onclick = () => (location.hash = "#/"); return; }
       pfCache[tok] = data;
       const c = data.course, se = data.section;
       shell(`<div class="page-head"><div><div class="eyebrow"><span class="badge blue">${esc(c.code)}</span><span>Section ${esc(se.name)}</span><span>·</span><span>${esc(se.intake)}</span>${c.credit_hours ? `<span>·</span><span>${+c.credit_hours} Credit Hours</span>` : ""}</div>
-          <h1>${esc(c.title)}</h1><div class="muted" style="margin-top:6px">Student ID <b style="color:var(--text)">${esc(data.student.student_id)}</b>${se.instructor ? ` · Instructor ${esc(se.instructor)}` : ""}</div></div>
+          <h1>${esc(c.title)}</h1><div class="muted" style="margin-top:6px">Student ID <b style="color:var(--text)">${esc(data.student.student_id)}</b>${se.instructor && !data.faculty ? ` · Instructor ${esc(se.instructor)}` : ""}</div></div>
           <div class="actions no-print"><button class="btn secondary" onclick="print()">${icon("printer")} Print</button></div></div>
         ${Grade.render(data)}
         <p class="center xs faint" style="margin-top:26px">Marks shown are the latest entered by your instructor. Contact your instructor if something looks wrong.</p>`, back);

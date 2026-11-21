@@ -1,22 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Classfolio">
   <defs>
-    <linearGradient id="cf-bg" x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#5b7cff"/>
-      <stop offset=".55" stop-color="#3a4fd8"/>
-      <stop offset="1" stop-color="#6d3fd6"/>
+    <linearGradient id="cf-bg" x1="4" y1="2" x2="60" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6a7dff"/>
+      <stop offset=".5" stop-color="#4338ca"/>
+      <stop offset="1" stop-color="#7c3aed"/>
     </linearGradient>
-    <linearGradient id="cf-shine" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#fff" stop-opacity=".22"/>
+    <linearGradient id="cf-ring" x1="16" y1="16" x2="44" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c7d2fe"/>
+    </linearGradient>
+    <radialGradient id="cf-glow" cx="20" cy="10" r="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity=".28"/>
       <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </linearGradient>
+    </radialGradient>
   </defs>
-  <rect width="64" height="64" rx="18" fill="url(#cf-bg)"/>
-  <path d="M0 18A18 18 0 0 1 18 0h28a18 18 0 0 1 18 18v6C44 30 22 30 0 24z" fill="url(#cf-shine)"/>
-  <!-- open folio (book) -->
-  <path d="M12 21.5c6.3-2.9 13-2.9 20 1.8 7-4.7 13.7-4.7 20-1.8v22c-6.3-2.9-13-2.9-20 1.8-7-4.7-13.7-4.7-20-1.8z" fill="#fff" fill-opacity=".14" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/>
-  <path d="M32 23.3v22" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>
-  <!-- progress lines on the left page -->
-  <path d="M17.5 29.5h8.5M17.5 35h6" stroke="#fff" stroke-opacity=".8" stroke-width="2.4" stroke-linecap="round"/>
-  <!-- check on the right page -->
-  <path d="M37.5 33.2l3.6 3.6 7-7.6" fill="none" stroke="#7dffb3" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="64" height="64" rx="19" fill="url(#cf-bg)"/>
+  <rect width="64" height="64" rx="19" fill="url(#cf-glow)"/>
+  <!-- the C: an open progress ring -->
+  <path d="M44.4 19.6A17.5 17.5 0 1 0 44.4 44.4" fill="none" stroke="url(#cf-ring)" stroke-width="7.5" stroke-linecap="round"/>
+  <!-- the folio: a tilted page with a folded corner and a check -->
+  <g transform="rotate(-9 31.5 32)">
+    <path d="M25 24.5h9.2l4.3 4.3v10.2a2 2 0 0 1-2 2H25a2 2 0 0 1-2-2v-12.5a2 2 0 0 1 2-2z" transform="translate(.8 1.6)" fill="#1e1b4b" fill-opacity=".3"/>
+    <path d="M25 24.5h9.2l4.3 4.3v10.2a2 2 0 0 1-2 2H25a2 2 0 0 1-2-2v-12.5a2 2 0 0 1 2-2z" fill="#fff"/>
+    <path d="M34.2 24.5v3.3a1 1 0 0 0 1 1h3.3" fill="#a5b4fc"/>
+    <path d="M26.8 33.6l2.6 2.6 5-5.4" fill="none" stroke="#10b981" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <!-- the spark: the student checking in -->
+  <circle cx="50.5" cy="32" r="3.6" fill="#6ee7b7"/>
 </svg>

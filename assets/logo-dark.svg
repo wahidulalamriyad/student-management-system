@@ -1,15 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Classfolio">
   <defs>
     <linearGradient id="cfd-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#242424"/><stop offset="1" stop-color="#141414"/>
+      <stop offset="0" stop-color="#262626"/><stop offset="1" stop-color="#141414"/>
     </linearGradient>
-    <linearGradient id="cfd-g" x1="12" y1="20" x2="52" y2="46" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#3ecf8e"/><stop offset="1" stop-color="#a3e9c5"/>
+    <linearGradient id="cfd-ring" x1="16" y1="14" x2="44" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a3e9c5"/><stop offset="1" stop-color="#3ecf8e"/>
     </linearGradient>
   </defs>
-  <rect x=".75" y=".75" width="62.5" height="62.5" rx="17.5" fill="url(#cfd-bg)" stroke="#3ecf8e" stroke-opacity=".45" stroke-width="1.5"/>
-  <path d="M12 21.5c6.3-2.9 13-2.9 20 1.8 7-4.7 13.7-4.7 20-1.8v22c-6.3-2.9-13-2.9-20 1.8-7-4.7-13.7-4.7-20-1.8z" fill="#3ecf8e" fill-opacity=".1" stroke="#fafafa" stroke-width="2.6" stroke-linejoin="round"/>
-  <path d="M32 23.3v22" stroke="#fafafa" stroke-width="2.6" stroke-linecap="round"/>
-  <path d="M17.5 29.5h8.5M17.5 35h6" stroke="#b4b4b4" stroke-width="2.4" stroke-linecap="round"/>
-  <path d="M37.5 33.2l3.6 3.6 7-7.6" fill="none" stroke="url(#cfd-g)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x=".75" y=".75" width="62.5" height="62.5" rx="18.25" fill="url(#cfd-bg)" stroke="#3ecf8e" stroke-opacity=".35" stroke-width="1.5"/>
+  <path d="M44.4 19.6A17.5 17.5 0 1 0 44.4 44.4" fill="none" stroke="url(#cfd-ring)" stroke-width="7.5" stroke-linecap="round"/>
+  <g transform="rotate(-9 31.5 32)">
+    <path d="M25 24.5h9.2l4.3 4.3v10.2a2 2 0 0 1-2 2H25a2 2 0 0 1-2-2v-12.5a2 2 0 0 1 2-2z" transform="translate(.8 1.6)" fill="#000" fill-opacity=".3"/>
+    <path d="M25 24.5h9.2l4.3 4.3v10.2a2 2 0 0 1-2 2H25a2 2 0 0 1-2-2v-12.5a2 2 0 0 1 2-2z" fill="#fafafa"/>
+    <path d="M34.2 24.5v3.3a1 1 0 0 0 1 1h3.3" fill="#8a8a8a"/>
+    <path d="M26.8 33.6l2.6 2.6 5-5.4" fill="none" stroke="#16a34a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <circle cx="50.5" cy="32" r="3.6" fill="#3ecf8e"/>
 </svg>
