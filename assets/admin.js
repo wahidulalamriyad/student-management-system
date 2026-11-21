@@ -562,50 +562,115 @@
 
   // ---------- Overview tab
   function tabOverview(X) {
-    const { students, terms } = S, min = X.min;
+    const { students, terms, sec } = S, min = X.min, N = students.length;
+    const R = S.assess.length ? allResults() : null;
     const allCols = terms.flatMap((t) => t.classes.map((c) => ({ t, c, h: isHeld(c), n: Object.keys(recs(c.id)).length, l: Object.values(recs(c.id)).filter((r) => r.status === "late").length })));
-    const heldCols = allCols.filter((x) => x.h);
-    const bands = [["90–100%", (p) => p >= 90, "green"], ["80–89%", (p) => p >= 80 && p < 90, ""], ["70–79%", (p) => p >= 70 && p < 80, "warn"], ["Below 70%", (p) => p < 70, "bad"]]
-      .map(([l, f, c]) => [l, students.filter((s) => X.per[s.student_id].p != null && f(X.per[s.student_id].p)).length, c]);
-    const counts = { P: 0, L: 0, E: 0, pin: 0, manual: 0 }; S.att.forEach((a) => { counts[a.status === "late" ? "L" : a.status === "excused" ? "E" : "P"]++; counts[a.source]++; });
-    const scored = students.length && heldCols.length;
-    $("#tab").innerHTML = `<div class="grid side">
-      <div class="stack">
-        <div class="card"><div class="card-head"><div><h2>Attendance by Class</h2><div class="sub">Share of the section that attended each class held so far</div></div>
-          <div class="legend"><span><span class="mk P">P</span> ≥ ${min}%</span><span><span class="mk L">L</span> ${min - 10}–${min - 1}%</span><span><span class="mk A">A</span> Lower</span></div></div>
-          ${scored ? `<div class="bars">${[25, 50, 75, 100].map((g) => `<div class="gl" style="bottom:${g * 0.95}%"><span>${g}%</span></div>`).join("")}
-            ${allCols.map(({ t, c, h, n, l }) => { if (!h) return `<div class="bar nh"><div class="tip">${esc(t.name)} · ${App.classLabel(c.number)}<br>Not held yet</div><div class="fill"></div></div>`; const p = pct(n, students.length); return `<div class="bar ${p < min - 10 ? "bad" : p < min ? "warn" : ""}"><div class="tip">${esc(t.name)} · ${App.classLabel(c.number)}<br>${n}/${students.length} · ${p}%${l ? ` · ${l} late` : ""}</div><div class="fill" style="height:${p * 0.95}%"></div></div>`; }).join("")}</div>
-            <div class="bar-labels">${allCols.map(({ t, c }) => `<span title="${esc(t.name)} · ${App.classLabel(c.number)}">${esc((t.name.trim()[0] || "").toUpperCase())}${App.pad2(c.number)}</span>`).join("")}</div>`
-          : `<div class="empty"><div class="ic">${icon("chart")}</div><h3>No Classes Held Yet</h3><p>Start the PIN for your first class — the chart fills in as students check in.</p></div>`}
-        </div>
-        ${X.risk.length ? `        <div class="card"><div class="card-head"><div><h2>Students Below ${min}%</h2><div class="sub">${X.risk.length ? "Consider Contacting These Students" : "Everyone is above the minimum — great!"}</div></div>
-          ${X.risk.length ? `<button class="btn sm secondary" id="cprisk">${icon("copy")} Copy IDs</button>` : ""}</div>
-          ${X.risk.length ? `<div class="table-wrap" style="max-height:420px"><table><thead><tr><th>Student ID</th><th>Name</th><th class="num">Attended</th><th class="num">Attendance</th></tr></thead><tbody>
-            ${X.risk.sort((a, b) => X.per[a.student_id].p - X.per[b.student_id].p).map((s) => { const p = X.per[s.student_id]; return `<tr class="clickable" data-stu="${esc(s.student_id)}"><td><b>${esc(s.student_id)}</b></td><td>${esc(s.name)}</td>
-              <td class="num">${p.a} / ${p.h}</td><td><div class="pct-cell">${App.progress(p.p, min)}<b class="${App.pctClass(p.p, min)}">${p.p}%</b></div></td></tr>`; }).join("")}</tbody></table></div>`
-          : `<div class="empty" style="padding:24px"><div class="ic" style="background:var(--success-soft);color:var(--success)">${icon("check")}</div><p style="margin:0">No students are at risk${X.held.length ? "" : " yet"}.</p></div>`}
-        </div>` : ""}</div>
-      <div class="stack">
-        ${S.assess.length ? (() => { const R = Object.values(allResults()), key = (r) => (r.complete || r.grade?.special ? r.overall : r.standing), gr = (r) => (r.complete || r.grade?.special ? r.grade : r.standingGrade);
-          const vals = R.filter((r) => r.complete || r.grade?.special || r.standing != null).map(key).filter((x) => x != null), av = vals.length ? vals.reduce((n, x) => n + x, 0) / vals.length : null, f = R.filter((r) => gr(r)?.grade === "F").length, open_ = R.some((r) => !r.complete);
-          return `<div class="card"><div class="card-head" style="margin-bottom:12px"><h2>Marks & Grades</h2></div>
-            <ul class="list"><li>${icon("chart")}<span class="grow">Section Average${open_ ? " (So Far)" : ""}</span><b>${av == null ? "—" : fmt(av) + "%"}</b></li><li>${icon("alert")}<span class="grow">${open_ ? "Standing at F" : "Failing (F)"}</span><b class="${f ? "pct-bad" : ""}">${f}</b></li></ul></div>`; })() : `<div class="card"><h2 style="margin-bottom:8px">Marks & Grades</h2><p class="small muted">No assessment plan yet.</p><button class="btn sm" id="tomarks2">${icon("book")} Set Up Marks</button></div>`}
-        <div class="card"><h2 style="margin-bottom:18px">Attendance Distribution</h2><div class="bands">${bands.map(([l, n, c]) => `<div class="band"><span class="muted">${l}</span>
-          <div class="progress ${c === "green" ? "" : c}"><span style="width:${students.length ? (n / students.length) * 100 : 0}%"></span></div><b class="num">${n}</b></div>`).join("")}</div></div>
-        <div class="card"><h2 style="margin-bottom:14px">Records</h2><ul class="list">
-          <li><span class="mk P">P</span><span class="grow">On Time</span><b>${counts.P}</b></li>
-          <li><span class="mk L">L</span><span class="grow">Late</span><b>${counts.L}</b></li>
-          <li><span class="mk E">E</span><span class="grow">Excused</span><b>${counts.E}</b></li>
-          <li>${icon("smartphone")}<span class="grow">Checked In with PIN</span><b>${counts.pin}</b></li>
-          <li>${icon("edit")}<span class="grow">Marked by You</span><b>${counts.manual}</b></li></ul></div>
-        <div class="card"><h2 style="margin-bottom:6px">Rules</h2><p class="small muted">Change these in Settings.</p><ul class="list small">
-          <li>${icon("target")}<span class="grow">Minimum Attendance</span><b>${min}%</b></li>
-          <li>${icon("clock")}<span class="grow">Late After</span><b>${S.sec.late_after_minutes ? S.sec.late_after_minutes + " min" : "Off"}</b></li>
-          <li>${icon("smartphone")}<span class="grow">One Device per Class</span><b>${S.sec.one_device_per_class ? "On" : "Off"}</b></li></ul></div>
+    const heldCols = allCols.filter((x) => x.h), scored = N && heldCols.length;
+    const pcts = heldCols.map((x) => pct(x.n, N));
+    const counts = { P: 0, L: 0, E: 0, pin: 0, manual: 0 }; S.att.forEach((a) => { counts[a.status === "late" ? "L" : a.status === "excused" ? "E" : "P"]++; counts[a.source] = (counts[a.source] || 0) + 1; });
+    const nextC = S.classes.find(isOpen) || terms.flatMap((t) => t.classes).find((c) => !isHeld(c)), nextT = nextC && terms.find((t) => t.id === nextC.term_id);
+
+    // ---- who needs attention (one row per student, with every reason)
+    const streak = (sid) => { let k = 0; for (let i = heldCols.length - 1; i >= 0; i--) { if (recs(heldCols[i].c.id)[sid]) break; k++; } return k; };
+    const marksItems = S.assess.filter((a) => a.kind !== "attendance");
+    const need = students.map((s) => {
+      const p = X.per[s.student_id], why = [], r = R?.[s.student_id];
+      if (p.p != null && p.p < min) why.push(["bad", `Attendance ${p.p}%`]);
+      else if (p.p != null && pct(p.a, p.h + 1) < min) why.push(["warn", "One Absence from Below " + min + "%"]);
+      const k = streak(s.student_id); if (k >= 2) why.push(["bad", `Absent ${k} Classes in a Row`]);
+      const g = r && (r.complete ? r.grade : r.standingGrade); if (g?.grade === "F") why.push(["bad", `Standing ${fmt(r.complete ? r.overall : r.standing)}% · F`]);
+      return { s, why, sev: why.filter((w) => w[0] === "bad").length * 2 + why.length, p: p.p ?? 101 };
+    }).filter((x) => x.why.length).sort((a, b) => b.sev - a.sev || a.p - b.p);
+
+    // ---- assessment performance
+    const perf = marksItems.map((a) => { const v = students.map((s) => markOf(a.id, s.student_id)).filter((x) => x != null);
+      return { a, n: v.length, avg: v.length && a.max_marks ? Math.round((v.reduce((x, y) => x + +y, 0) / v.length / a.max_marks) * 100) : null }; });
+    const entered = perf.reduce((n, x) => n + x.n, 0), total = marksItems.length * N;
+    const marked = perf.filter((x) => x.avg != null), hardest = [...marked].sort((a, b) => a.avg - b.avg)[0], best = [...marked].sort((a, b) => b.avg - a.avg)[0];
+    const partial = perf.filter((x) => x.n > 0 && x.n < N);
+
+    // ---- standing & COs
+    const fin = (r) => r.complete || !!r.grade?.special;
+    const graded = R ? Object.values(R).filter((r) => fin(r) || r.standing != null) : [];
+    const gOf = (r) => (fin(r) ? r.grade : r.standingGrade), key = (r) => (fin(r) ? r.overall : r.standing);
+    const avgStanding = graded.length ? graded.reduce((n, r) => n + key(r), 0) / graded.length : null;
+    const scale = [...(sec.grade_scale || Grade.AIUB_SCALE)].sort((a, b) => b.min - a.min);
+    const dist = scale.map((g) => ({ g: g.grade, n: graded.filter((r) => gOf(r)?.grade === g.grade).length })), dmax = Math.max(1, ...dist.map((d) => d.n));
+    const coCodes = R ? [...new Set(Object.values(R).flatMap((r) => r.coList.map((c) => c.code)))] : [];
+    const cos = coCodes.map((code) => { const xs = Object.values(R).map((r) => r.coList.find((c) => c.code === code)).filter((c) => c && c.pct != null);
+      return { code, n: xs.length, share: xs.length ? Math.round((xs.filter((c) => c.attained).length / xs.length) * 100) : null, avg: xs.length ? Math.round(xs.reduce((a, c) => a + c.pct, 0) / xs.length) : null }; });
+    const coTarget = sec.course.co_target ?? 60;
+
+    // ---- insights: conclusions that are not shown anywhere else on the page
+    const short = (a) => { const p = String(a.name).split(" · "); return p.length > 2 ? `${p[0]} · ${p[p.length - 1]}` : a.name; };
+    const ins = [];
+    if (!N) ins.push(["info", "users", "Add Your Students", "Upload the Valid Student List to see insights here."]);
+    if (scored) {
+      if (heldCols.length >= 4) { const last = pcts.slice(-3), prev = pcts.slice(0, -3), a = Math.round(last.reduce((x, y) => x + y, 0) / last.length), b = Math.round(prev.reduce((x, y) => x + y, 0) / prev.length), d = a - b;
+        ins.push([d > 0 ? "good" : d <= -5 ? "bad" : d < 0 ? "warn" : "good", d >= 0 ? "trendUp" : "trendDown", `Attendance ${d > 0 ? "Up" : d < 0 ? "Down" : "Steady"}${d ? ` ${Math.abs(d)} Points` : ""}`, `The last 3 classes averaged ${a}%, against ${b}% before.`]); }
+      if (heldCols.length > 1) { const lo = heldCols.reduce((m, x) => (x.n < m.n ? x : m), heldCols[0]);
+        ins.push([pct(lo.n, N) < min ? "warn" : "info", "calendar", `Lowest Turnout: ${App.classLabel(lo.c.number)}`, `${esc(lo.t.name)} · ${lo.n} of ${N} students attended (${pct(lo.n, N)}%).`]); }
+      const edge = need.filter((x) => x.why.some((w) => w[1].startsWith("One Absence"))).length;
+      ins.push([edge ? "warn" : "good", edge ? "alert" : "check", edge ? `${edge} Student${edge === 1 ? " Is" : "s Are"} One Absence Away` : "No One Is Close to the Limit", edge ? `Missing the next class drops them below ${min}%.` : `Every student above ${min}% can miss a class and stay above it.`]);
+      const runs = students.filter((s) => streak(s.student_id) >= 2).length;
+      if (heldCols.length >= 2) ins.push([runs ? "bad" : "good", runs ? "flag" : "check", runs ? `${runs} Missed the Last 2+ Classes` : "No Repeated Absences", runs ? "A quick check-in may bring them back." : "Nobody has missed two classes in a row."]);
+    }
+    if (graded.length >= 4 && scored) {
+      const hi = graded.filter((r) => { const sid = Object.keys(R).find((k) => R[k] === r), p = X.per[sid]?.p; return p != null && p >= min; }), lo = graded.filter((r) => !hi.includes(r));
+      if (hi.length && lo.length) { const m = (xs) => xs.reduce((n, r) => n + key(r), 0) / xs.length, d = m(hi) - m(lo);
+        ins.push([d >= 0 ? "info" : "warn", "chart", `Attendance ${d >= 0 ? "Pays Off" : "and Marks Don't Line Up"}`, `Students at ${min}%+ attendance average ${fmt(m(hi))}%, the rest ${fmt(m(lo))}%.`]); }
+    }
+    if (graded.length && !graded.every(fin)) {
+      const near = graded.filter((r) => { const v = key(r), up = scale.filter((g) => g.min > v).sort((a, b) => a.min - b.min)[0]; return up && up.min - v <= 2; }).length;
+      if (near) ins.push(["info", "graduation", `${near} Student${near === 1 ? " Is" : "s Are"} Close to the Next Grade`, "Within 2 marks of moving up on the marks entered so far."]);
+    }
+    if (N && !marksItems.length) ins.push(["info", "book", "Set Up the Assessment Plan", "Pick a ready-made plan in the Marks tab to see grade insights."]);
+    if (N && !heldCols.length) ins.push(["info", "smartphone", "Take Attendance With the PIN", "Insights on turnout and absences appear after the first class."]);
+    const rank = { bad: 0, warn: 1, info: 2, good: 3 };
+    const insights = ins.map((x, i) => [x, i]).sort((a, b) => rank[a[0][0]] - rank[b[0][0]] || a[1] - b[1]).map((x) => x[0]).slice(0, 6);
+
+    const card = (title, sub, body, extra = "", cls = "") => `<div class="card ov-card ${cls}"><div class="card-head"><div><h2>${title}</h2>${sub ? `<div class="sub">${sub}</div>` : ""}</div>${extra}</div>${body}</div>`;
+    const none = (ic, t, p) => `<div class="empty ov-empty"><div class="ic">${icon(ic)}</div><h3>${t}</h3><p>${p}</p></div>`;
+    const bar = (v, tone = "") => `<div class="progress ${tone}"><span style="width:${Math.max(0, Math.min(100, v || 0))}%"></span></div>`;
+    const tone = (p) => (p == null ? "" : p >= min ? "" : p >= min - 10 ? "warn" : "bad");
+
+    const termRows = terms.map((t) => { const h = t.classes.filter(isHeld).length, its = marksItems.filter((a) => a.term_id === t.id), e = perf.filter((x) => x.a.term_id === t.id).reduce((n, x) => n + x.n, 0), tot = its.length * N;
+      return `<div class="ov-term"><div class="row center-y"><b class="grow">${esc(t.name)}</b><span class="badge">${fmt(t.weight ?? 0, 0)}% of Course</span></div>
+        <div class="ov-kv"><span>Classes Held</span><b>${h} / ${t.classes.length}</b></div>${bar(t.classes.length ? (h / t.classes.length) * 100 : 0)}
+        <div class="ov-kv"><span>Marks Entered</span><b>${tot ? `${Math.round((e / tot) * 100)}%` : "—"}</b></div>${bar(tot ? (e / tot) * 100 : 0, "violet")}</div>`; }).join("");
+
+    $("#tab").innerHTML = `<div class="ov">
+      <div class="ov-insights">${insights.map(([tn, ic, h, d]) => `<div class="ins ${tn}"><div class="ic">${icon(ic)}</div><div class="tx"><b>${h}</b><span>${d}</span></div></div>`).join("")}</div>
+
+      <div class="ov-row r-8-4">
+        ${card("Attendance by Class", "Share of the section at each class held", scored ? `<div class="bars">${[25, 50, 75, 100].map((g) => `<div class="gl" style="bottom:${g * 0.95}%"><span>${g}%</span></div>`).join("")}
+            ${allCols.map(({ t, c, h, n, l }) => { if (!h) return `<div class="bar nh"><div class="tip">${esc(t.name)} · ${App.classLabel(c.number)}<br>Not held yet</div><div class="fill"></div></div>`; const p = pct(n, N); return `<div class="bar ${p < min - 10 ? "bad" : p < min ? "warn" : ""}"><div class="tip">${esc(t.name)} · ${App.classLabel(c.number)}<br>${n}/${N} · ${p}%${l ? ` · ${l} late` : ""}</div><div class="fill" style="height:${p * 0.95}%"></div></div>`; }).join("")}</div>
+            <div class="bar-labels">${allCols.map(({ t, c }) => `<span title="${esc(t.name)} · ${App.classLabel(c.number)}">${esc((t.name.trim()[0] || "").toUpperCase())}${App.pad2(c.number)}</span>`).join("")}</div>
+            <div class="ov-chips"><span><span class="mk P">P</span> On Time <b>${counts.P}</b></span><span><span class="mk L">L</span> Late <b>${counts.L}</b></span><span><span class="mk E">E</span> Excused <b>${counts.E}</b></span><span>${icon("smartphone")} By PIN <b>${counts.pin || 0}</b></span><span>${icon("edit")} By You <b>${counts.manual || 0}</b></span></div>`
+          : none("chart", "No Classes Held Yet", "The chart fills in as students check in with the PIN."),
+          `<div class="legend"><span><i class="sw ok"></i>${min}%+</span><span><i class="sw warn"></i>${min - 10}–${min - 1}%</span><span><i class="sw bad"></i>Below ${min - 10}%</span></div>`)}
+        ${card("Term Progress", "How far each term has come", `<div class="ov-terms">${termRows}</div>`)}
+      </div>
+
+      <div class="ov-row r-4-4-4">
+        ${card("Attendance Spread", scored ? `${N} students · minimum ${min}%` : "", scored ? `<div class="bands">${[["90–100%", (p) => p >= 90, ""], ["80–89%", (p) => p >= 80 && p < 90, ""], ["70–79%", (p) => p >= 70 && p < 80, "warn"], ["Below 70%", (p) => p < 70, "bad"]].map(([l, f, c]) => { const n = students.filter((s) => X.per[s.student_id].p != null && f(X.per[s.student_id].p)).length;
+            return `<div class="band"><span class="muted">${l}</span>${bar(N ? (n / N) * 100 : 0, c)}<b class="num">${n}</b></div>`; }).join("")}</div>` : none("users", "Nothing Yet", "Shown once classes are held."))}
+        ${card("Current Standing", graded.length ? `${graded.length} of ${N} students with marks · average ${fmt(avgStanding)}%` : "", graded.length ? `<div class="ov-dist">${dist.map((d) => `<div class="d ${d.g === "F" ? "F" : ""}" title="${d.n} at ${esc(d.g)}"><b>${d.n || ""}</b><div class="f" style="height:${(d.n / dmax) * 100}%"></div><span>${esc(d.g)}</span></div>`).join("")}</div>`
+          : none("graduation", "No Marks Yet", S.assess.length ? "Grades appear as you enter marks." : "Set up the assessment plan first."))}
+        ${card("Course Outcomes", cos.length ? `Students reaching ${coTarget}% of each CO's marks` : "", cos.length ? `<div class="ov-cos">${cos.map((c) => `<div class="co-line"><b class="co-code">${esc(c.code)}</b>${bar(c.share, c.share == null ? "" : c.share >= coTarget ? "" : "warn")}<span class="num">${c.share == null ? `<span class="faint">Not Yet</span>` : c.share + "%"}</span></div>`).join("")}<div class="ov-target"><span style="left:${coTarget}%"></span></div></div>`
+          : none("sparkles", "No COs Yet", "Tag assessments with a CO in the Assessment Plan."))}
+      </div>
+
+      <div class="ov-row r-12">
+        ${card("Needs Attention", need.length ? `${need.length} student${need.length === 1 ? "" : "s"} to follow up` : "", need.length ? `<div class="ov-need">${need.slice(0, 6).map(({ s, why }) => `<button class="ov-person" data-stu="${esc(s.student_id)}"><span class="id">${esc(s.student_id)}</span><span class="nm">${esc(s.name)}</span><span class="why">${why.map(([t, w]) => `<span class="chip ${t}">${w}</span>`).join("")}</span></button>`).join("")}${need.length > 6 ? `<div class="small muted ov-more">and ${need.length - 6} more · Copy IDs to get the full list</div>` : ""}</div>`
+          : none("check", "All Clear", scored || graded.length ? "No one is below the limits right now." : "Shown once classes are held or marks are entered."),
+          need.length ? `<button class="btn sm secondary" id="cpneed">${icon("copy")} Copy IDs</button>` : "")}
+      </div>
+      <div class="ov-row r-12">
+        ${card("Assessment Performance", marked.length ? "Class average on each marked item" : "", marked.length ? `<div class="ov-perf">${perf.filter((x) => x.n).map((x) => `<div class="ov-pl ${x === hardest && marked.length > 1 ? "low" : ""}" ${x === hardest && marked.length > 1 ? 'title="Lowest class average"' : ""}><span class="nm" title="${esc(itemLabel(x.a))}">${esc(short(x.a))}</span>${bar(x.avg, x.avg < 50 ? "bad" : x.avg < 65 ? "warn" : "")}<b class="num">${x.avg}%</b><span class="faint xs num">${x.n}/${N}</span></div>`).join("")}</div>`
+          : none("book", "Nothing Marked Yet", S.assess.length ? "Averages appear as you enter marks." : "Set up the assessment plan in the Marks tab."))}
       </div></div>`;
-    const tr_ = $("#tores"); if (tr_) tr_.onclick = () => go(`#/section/${S.sec.id}/results`);
-    const tm_ = $("#tomarks2"); if (tm_) tm_.onclick = () => go(`#/section/${S.sec.id}/marks`);
-    const cp = $("#cprisk"); if (cp) cp.onclick = () => App.copy(X.risk.map((s) => s.student_id).join("\n"), `${X.risk.length} IDs copied`);
+    const cp = $("#cpneed"); if (cp) cp.onclick = () => App.copy(need.map((x) => x.s.student_id).join("\n"), `${need.length} IDs copied`);
     $$("[data-stu]").forEach((r) => (r.onclick = () => studentProfile(r.dataset.stu)));
   }
 

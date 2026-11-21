@@ -34,6 +34,9 @@
     calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
     chart: '<path d="M3 3v18h18"/><path d="M7 16V9M12 16V5M17 16v-4"/>',
     settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+    trendUp: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    trendDown: '<path d="M3 7l6 6 4-4 8 8"/><path d="M15 17h6v-6"/>',
+    flag: '<path d="M4 21V4"/><path d="M4 4h11l-1.5 4L15 12H4"/>',
     logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
     play: '<polygon points="6 3 20 12 6 21 6 3"/>',
     stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
@@ -91,9 +94,9 @@
     remember: { get: rememberMe, set(v) { try { localStorage.setItem("cf_remember", v ? "1" : "0"); } catch {} } },
     // brand block (logo + wordmark)
     brand(sub = "") {
-      return `<img class="logo-img logo-light" src="assets/logo.svg" alt="" width="40" height="40" /><img class="logo-img logo-dark" src="assets/logo-dark.svg" alt="" width="40" height="40" /><span class="brand-text"><span class="t1">Class<span class="folio">folio</span></span>${sub ? `<span class="t2">${App.esc(sub)}</span>` : ""}</span>`;
+      return `<img class="logo-img logo-light" src="assets/logo.svg?v=6" alt="" width="40" height="40" /><img class="logo-img logo-dark" src="assets/logo-dark.svg?v=6" alt="" width="40" height="40" /><span class="brand-text"><span class="t1">Class<span class="folio">folio</span></span>${sub ? `<span class="t2">${App.esc(sub)}</span>` : ""}</span>`;
     },
-    logoBig() { return `<img class="logo-img lg logo-light" src="assets/logo.svg" alt="Classfolio" width="60" height="60" /><img class="logo-img lg logo-dark" src="assets/logo-dark.svg" alt="Classfolio" width="60" height="60" />`; },
+    logoBig() { return `<img class="logo-img lg logo-light" src="assets/logo.svg?v=6" alt="Classfolio" width="60" height="60" /><img class="logo-img lg logo-dark" src="assets/logo-dark.svg?v=6" alt="Classfolio" width="60" height="60" />`; },
     avatar(url, name, size = 40, cls = "") {
       const s = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.36)}px`;
       return url ? `<img class="avatar-img ${cls}" src="${App.esc(url)}" alt="${App.esc(name || "")}" style="${s}" loading="lazy" referrerpolicy="no-referrer" />`
