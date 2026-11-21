@@ -949,3 +949,14 @@ p, .hint, .sub, .msg, .small { text-wrap: pretty; }
 :root[data-theme="dark"] .mgrid tbody tr:hover td, :root[data-theme="dark"] .matrix tbody tr:hover td { background: #1f1f1f; }
 .matrix thead th[rowspan] { vertical-align: bottom; }
 .grade-pill.tentative { background: transparent !important; box-shadow: inset 0 0 0 1.5px currentColor; }
+
+/* ---------- flat, single-row table headers ---------- */
+.mgrid thead th { vertical-align: bottom; height: 64px; }
+.mgrid th.it { width: 112px; min-width: 112px; max-width: 112px; padding: 10px 8px; }
+.mgrid th.it .hl { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
+.mgrid th.gstart, .mgrid td.gstart, .matrix th.tstart, .matrix td.tstart { border-left: 1px solid var(--border-strong); }
+.matrix th.cls { line-height: 1.15; vertical-align: bottom; }
+.matrix th.cls small { display: block; font-size: 10px; font-weight: 600; color: var(--faint); margin-top: 2px; text-transform: none; }
+.matrix thead th { vertical-align: bottom; }
+.mgrid th.it { width: 124px; min-width: 124px; max-width: 124px; }
+.mgrid th.it .hl { -webkit-line-clamp: 3; }

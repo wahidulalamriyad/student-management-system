@@ -884,12 +884,11 @@
         <div class="btn-group"><button class="btn sm secondary" id="print">${icon("printer")} Print</button><button class="btn sm secondary" id="xls2">${icon("download")} Excel</button></div></div>
       <div style="padding:0 24px 16px" class="legend"><span><span class="mk P">P</span>Present</span><span><span class="mk L">L</span>Late</span><span><span class="mk E">E</span>Excused</span><span><span class="mk A">A</span>Absent</span><span><span class="mk N"></span>Not Held</span><span><span class="mk P manual">P</span>Marked by You</span><span class="faint">· Click a cell to change it, or a class number for bulk actions</span></div>
       ${students.length && cols.length ? `<div class="table-wrap keep" style="max-height:640px;border-radius:0;border-left:0;border-right:0;border-bottom:0"><table class="matrix"><thead>
-        <tr><th class="sticky" rowspan="2">Student ID</th><th rowspan="2" class="name sticky2">Name</th>${ts.map((t) => t.classes.length ? `<th class="term" colspan="${t.classes.length}">${esc(t.name)}</th>` : "").join("")}<th rowspan="2" class="num">Total</th><th rowspan="2" class="num" style="padding-right:16px">%</th></tr>
-        <tr>${cols.map(({ c }) => `<th class="cls ${isHeld(c) ? "" : "nh"}" data-cls="${c.id}" title="${App.classLabel(c.number)}${c.class_date ? " · " + App.fmtDay(c.class_date) : ""}${c.title ? " · " + esc(c.title) : ""}">${App.pad2(c.number)}</th>`).join("")}</tr></thead>
+        <tr><th class="sticky">Student ID</th><th class="name sticky2">Name</th>${cols.map(({ t, c }, i) => `<th class="cls ${isHeld(c) ? "" : "nh"} ${i === 0 || cols[i - 1].t.id !== t.id ? "tstart" : ""}" data-cls="${c.id}" title="${esc(t.name)} · ${App.classLabel(c.number)}${c.class_date ? " · " + App.fmtDay(c.class_date) : ""}${c.title ? " · " + esc(c.title) : ""}">${App.pad2(c.number)}<small>${esc(String(t.name).split(" ")[0])}</small></th>`).join("")}<th class="num">Total</th><th class="num" style="padding-right:16px">%</th></tr></thead>
         <tbody id="mtb">${shown.map((s) => {
           const p = X.per[s.student_id];
-          const cells = cols.map(({ c }) => { const a = recs(c.id)[s.student_id], k = a ? STATUS[a.status].k : isHeld(c) ? "A" : "N";
-            return `<td class="cell" data-c="${c.id}" data-s="${esc(s.student_id)}"><span class="mk ${k} ${a && a.source === "manual" ? "manual" : ""}">${k === "N" ? "" : k}</span></td>`; }).join("");
+          const cells = cols.map(({ t, c }, i) => { const a = recs(c.id)[s.student_id], k = a ? STATUS[a.status].k : isHeld(c) ? "A" : "N";
+            return `<td class="cell ${i === 0 || cols[i - 1].t.id !== t.id ? "tstart" : ""}" data-c="${c.id}" data-s="${esc(s.student_id)}"><span class="mk ${k} ${a && a.source === "manual" ? "manual" : ""}">${k === "N" ? "" : k}</span></td>`; }).join("");
           return `<tr data-q="${esc((s.student_id + " " + s.name).toLowerCase())}"><td class="sticky"><b>${esc(s.student_id)}</b></td><td class="name sticky2" title="${esc(s.name)}">${esc(s.name)}</td>${cells}
             <td class="num"><b>${p.a}</b><span class="faint">/${p.h}</span></td><td class="num ${App.pctClass(p.p, min)}" style="padding-right:16px;font-weight:700">${p.p == null ? "—" : p.p + "%"}</td></tr>`;
         }).join("")}</tbody></table></div>` : `<div class="empty"><div class="ic">${icon("grid")}</div><h3>Nothing to Show Yet</h3><p>Add students and classes first.</p></div>`}</div>`;
@@ -1130,24 +1129,13 @@
     const cols = rows.flatMap((r) => r.items);
     const R = allResults(), wsum = rows.reduce((n, r) => n + Grade.rowWeight(r), 0);
     const meta = (a) => `<small>/ ${fmt(a.max_marks, 2)} · ${fmt(a.weight, 2)}%${a.co ? ` · ${esc(a.co)}` : ""}${a.by_group ? " · Group" : ""}${a.visible === false ? " · Hidden" : ""}</small>`;
-    const head = (a, label = a.name) => `<span class="hl">${esc(label)}</span>${meta(a)}`;
-    // Split "Quiz 1 · DFA Design · Design" into a shared prefix (merged across columns) and the leaf shown above the inputs
-    const seg = (a) => { const p = String(a.name).split(" · "); return { pre: p.length > 1 ? p.slice(0, -1).join(" · ") : "", leaf: p[p.length - 1] }; };
-    const deep = rows.some((r) => r.group && r.items.some((a) => seg(a).pre));
-    const LV = deep ? 3 : 2;
-    let h2 = "", h3 = "";
-    rows.filter((r) => r.group).forEach((r) => {
-      if (!deep) { h2 += r.items.map((a) => `<th class="it">${head(a)}</th>`).join(""); return; }
-      for (let i = 0; i < r.items.length;) {
-        const a = r.items[i], { pre } = seg(a);
-        if (!pre) { h2 += `<th class="it" rowspan="2">${head(a)}</th>`; i++; continue; }
-        let j = i; while (j < r.items.length && seg(r.items[j]).pre === pre) j++;
-        h2 += `<th class="sub" colspan="${j - i}">${esc(pre)}</th>`;
-        h3 += r.items.slice(i, j).map((x) => `<th class="it">${head(x, seg(x).leaf)}</th>`).join("");
-        i = j;
-      }
-    });
-    const ruleNote = (r) => r.rule === "best" ? "Best Counted" : r.rule === "sum_up" ? "Rounded Up" : r.rule === "avg" ? "Average" : "";
+    // One flat header row: each column carries its own short label; the full name, group and rule are in the tooltip
+    const short = (a) => { const p = String(a.name).split(" · "); return p.length > 2 ? `${p[0]} · ${p[p.length - 1]}` : a.name; };
+    const ruleNote = (r) => r.rule === "best" ? "Best One Counted" : r.rule === "sum_up" ? "Added Up & Rounded Up" : r.rule === "avg" ? "Average" : "";
+    const tip = (a, r) => [r.group ? r.label : "", a.name, r.group && ruleNote(r) ? ruleNote(r) : "", `Out of ${fmt(a.max_marks, 2)} · ${fmt(a.weight, 2)}% of the term`, a.co || ""].filter(Boolean).join("\n");
+    const head = (a, r, first) => `<th class="it ${first ? "gstart" : ""}" title="${esc(tip(a, r))}"><span class="hl">${esc(short(a))}</span>${meta(a)}</th>`;
+    const starts = new Set(rows.map((r) => r.items[0].id));
+    const heads = rows.map((r) => r.items.map((a, i) => head(a, r, i === 0)).join("")).join("");
     const totCell = (r) => (r && r.graded ? fmt(r.total) : `<span class="faint">—</span>`);
     const grdCell = (r) => { if (!r || !r.graded) return `<span class="faint">—</span>`;
       const g = r.complete ? r.grade : r.standingGrade; if (!g?.grade) return `<span class="faint">—</span>`;
@@ -1165,14 +1153,12 @@
         <span class="weight-meter ${Math.abs(wsum - 100) < 0.01 ? "ok" : "bad"}">${icon(Math.abs(wsum - 100) < 0.01 ? "check" : "alert")} Term weights add up to ${fmt(wsum, 2)}%</span>
         <span>·</span><span id="mcount">${filled} of ${need} marks entered</span><span>·</span><span>Type a mark and it saves by itself. <span class="kbd">Enter</span> moves down. You can paste a block of marks from Excel.</span></div>
       ${S.students.length ? `<div class="table-wrap keep" style="max-height:640px;border-radius:0;border-left:0;border-right:0;border-bottom:0"><table class="mgrid"><thead>
-        <tr><th class="sticky" rowspan="${LV}">Student ID</th><th class="name sticky2" rowspan="${LV}">Name</th>
-          ${rows.map((r) => (r.group ? `<th class="grp" colspan="${r.items.length}">${esc(r.label)}${ruleNote(r) ? `<span class="rule">${ruleNote(r)}</span>` : ""}</th>` : `<th class="it solo" rowspan="${LV}">${head(r.items[0])}</th>`)).join("")}
-          <th rowspan="${LV}" class="num tot-h">Total<small>/ 100</small></th><th rowspan="${LV}" class="grd-h" title="An outlined grade is the standing on the marks entered so far">Grade</th></tr>
-        <tr>${h2}</tr>${deep ? `<tr>${h3}</tr>` : ""}</thead>
+        <tr><th class="sticky">Student ID</th><th class="name sticky2">Name</th>${heads}
+          <th class="num tot-h">Total<small>/ 100</small></th><th class="grd-h" title="An outlined grade is the standing on the marks entered so far">Grade</th></tr></thead>
         <tbody id="mtb">${S.students.map((s) => { const tr = R[s.student_id].terms.find((x) => x.term.id === T.id); const A = attByTerm(s.student_id)[T.id];
           return `<tr data-s="${esc(s.student_id)}" data-q="${esc((s.student_id + " " + s.name).toLowerCase())}"><td class="sticky"><b>${esc(s.student_id)}</b></td><td class="name sticky2" title="${esc(s.name)}">${esc(s.name)}</td>
-            ${cols.map((a) => a.kind === "attendance" ? `<td class="calc" title="${A.attended} of ${A.held} classes">${A.held ? fmt((A.attended / A.held) * a.max_marks, 2) : "—"}</td>`
-              : `<td><input class="mi ${a.by_group ? "grpm" : ""}" inputmode="decimal" data-a="${a.id}" data-max="${a.max_marks}" value="${markOf(a.id, s.student_id) ?? ""}" aria-label="${esc(itemLabel(a))} for ${esc(s.student_id)}" /></td>`).join("")}
+            ${cols.map((a) => a.kind === "attendance" ? `<td class="calc ${starts.has(a.id) ? "gstart" : ""}" title="${A.attended} of ${A.held} classes">${A.held ? fmt((A.attended / A.held) * a.max_marks, 2) : "—"}</td>`
+              : `<td class="${starts.has(a.id) ? "gstart" : ""}"><input class="mi ${a.by_group ? "grpm" : ""}" inputmode="decimal" data-a="${a.id}" data-max="${a.max_marks}" value="${markOf(a.id, s.student_id) ?? ""}" aria-label="${esc(itemLabel(a))} for ${esc(s.student_id)}" /></td>`).join("")}
             <td class="tot" data-tot>${totCell(tr)}</td><td data-grd class="grd">${grdCell(tr)}</td></tr>`; }).join("")}</tbody></table></div>`
       : `<div class="empty"><div class="ic">${icon("users")}</div><h3>No Students Yet</h3><p>Upload the student list first.</p></div>`}</div>`;
     $$("#mterm button").forEach((b) => (b.onclick = () => { ui.mterm = b.dataset.t; drawSection(); }));
