@@ -517,7 +517,8 @@
     const { sec, classes, students } = S, X = stats(), link = App.studentLink(sec.public_token);
     const open = classes.find(isOpen), openTerm = open && S.terms.find((t) => t.id === open.term_id);
     const nextC = open || S.terms.flatMap((t) => t.classes).find((c) => !isHeld(c));
-    const scrollY = scrollY_(), wrapScroll = $(".table-wrap.keep") ? [$(".table-wrap.keep").scrollLeft, $(".table-wrap.keep").scrollTop] : null;
+    const scrollY = scrollY_(), kw = $(".table-wrap.keep"), wrapScroll = kw && drawSection.tab === curTab + sec.id ? [kw.scrollLeft, kw.scrollTop] : null;
+    drawSection.tab = curTab + sec.id;
     const tabs = [["overview", "Overview", "chart"], ["classes", "Classes", "calendar", classes.length], ["students", "Students", "users", students.length], ["sheet", "Attendance", "grid"],
       ["marks", "Marks", "book", S.assess.length || null], ["groups", "Groups", "layers", S.groups.length || null], ["results", "Results", "target"], ["log", "Check-In Log", "list", S.att.length], ["settings", "Settings", "settings"]];
     page(`<div class="crumbs"><a href="#/">${icon("back")} All Sections</a></div>
@@ -589,9 +590,9 @@
         </div></div>
       <div class="stack">
         ${S.assess.length ? (() => { const R = Object.values(allResults()), key = (r) => (r.complete || r.grade?.special ? r.overall : r.standing), gr = (r) => (r.complete || r.grade?.special ? r.grade : r.standingGrade);
-          const vals = R.map(key).filter((x) => x != null), av = vals.length ? vals.reduce((n, x) => n + x, 0) / vals.length : null, f = R.filter((r) => gr(r)?.grade === "F").length, open_ = R.some((r) => !r.complete);
+          const vals = R.filter((r) => r.complete || r.grade?.special || r.standing != null).map(key).filter((x) => x != null), av = vals.length ? vals.reduce((n, x) => n + x, 0) / vals.length : null, f = R.filter((r) => gr(r)?.grade === "F").length, open_ = R.some((r) => !r.complete);
           return `<div class="card"><div class="card-head" style="margin-bottom:12px"><h2>Marks & Grades</h2><button class="btn sm soft" id="tores">${icon("target")} Results</button></div>
-            <ul class="list"><li>${icon("chart")}<span class="grow">Section average${open_ ? " (so far)" : ""}</span><b>${av == null ? "—" : fmt(av) + "%"}</b></li><li>${icon("alert")}<span class="grow">${open_ ? "Standing at F" : "Failing (F)"}</span><b class="${f ? "pct-bad" : ""}">${f}</b></li>
+            <ul class="list"><li>${icon("chart")}<span class="grow">Section Average${open_ ? " (So Far)" : ""}</span><b>${av == null ? "—" : fmt(av) + "%"}</b></li><li>${icon("alert")}<span class="grow">${open_ ? "Standing at F" : "Failing (F)"}</span><b class="${f ? "pct-bad" : ""}">${f}</b></li>
             <li>${icon(S.sec.portfolio_published ? "eye" : "eyeoff")}<span class="grow">Portfolio</span><b>${S.sec.portfolio_published ? "Published" : "Not Published"}</b></li></ul></div>`; })() : `<div class="card"><h2 style="margin-bottom:8px">Marks & Grades</h2><p class="small muted">No assessment plan yet.</p><button class="btn sm" id="tomarks2">${icon("book")} Set Up Marks</button></div>`}
         <div class="card"><h2 style="margin-bottom:18px">Attendance Distribution</h2><div class="bands">${bands.map(([l, n, c]) => `<div class="band"><span class="muted">${l}</span>
           <div class="progress ${c === "green" ? "" : c}"><span style="width:${students.length ? (n / students.length) * 100 : 0}%"></span></div><b class="num">${n}</b></div>`).join("")}</div></div>
@@ -614,7 +615,7 @@
 
   // ---------- Classes tab
   function tabClasses() {
-    const { sec, terms, students } = S;
+    const { sec, terms, students } = S, nextId = (S.classes.find(isOpen) || terms.flatMap((t) => t.classes).find((c) => !isHeld(c)))?.id;
     $("#tab").innerHTML = `<div class="stack">${terms.map((t) => { const h = t.classes.filter(isHeld).length; return `<div class="card">
         <div class="card-head"><div><h2>${esc(t.name)}</h2><div class="sub">${h} of ${t.classes.length} classes held</div></div>
           <div class="btn-group"><button class="btn sm secondary" data-add="${t.id}">${icon("plus")} Add Classes</button>
@@ -624,8 +625,8 @@
           <td><b>${App.classLabel(c.number)}</b></td><td class="nowrap">${c.class_date ? App.fmtDay(c.class_date) : `<span class="faint">—</span>`}</td>
           <td>${c.title ? esc(c.title) : `<span class="faint">—</span>`}</td>
           <td>${o ? `<span class="badge green"><span class="dot"></span> Open</span>` : hd ? `<span class="badge blue">Held</span>` : `<span class="badge">Not Held</span>`}</td>
-          <td>${hd ? `<div class="pct-cell">${App.progress(pct(n, students.length), sec.min_attendance_pct)}<b>${n}/${students.length}</b></div>${l ? `<div class="xs muted num">${l} late</div>` : ""}` : ""}</td>
-          <td class="actions"><a class="btn sm ${o ? "green" : hd ? "secondary" : ""}" href="pin.html?class=${c.id}" target="_blank" rel="noopener">${icon(o ? "external" : "play")} ${o ? "PIN Screen" : hd ? "Reopen" : "Start PIN"}</a>
+          <td>${hd ? `<div class="pct-cell">${App.progress(pct(n, students.length), sec.min_attendance_pct)}<b>${n}/${students.length}</b></div>${l ? `<div class="xs muted num">${l} late</div>` : ""}` : `<span class="faint">—</span>`}</td>
+          <td class="actions"><a class="btn sm ${o ? "green" : c.id === nextId ? "" : "secondary"}" href="pin.html?class=${c.id}" target="_blank" rel="noopener">${icon(o ? "external" : "play")} ${o ? "PIN Screen" : hd ? "Reopen" : "Start PIN"}</a>
             <button class="icon-btn" data-cls-menu="${c.id}" title="More">${icon("dots")}</button></td></tr>`; }).join("")}</tbody></table></div>`
         : `<div class="empty" style="padding:24px"><p style="margin:0">No classes in this term yet.</p></div>`}</div>`; }).join("")}
       <div class="card"><div class="card-head"><div><h2>Add a Term</h2><div class="sub">For example a make-up term or a lab block.</div></div></div>
@@ -740,7 +741,7 @@
       ${students.length ? `<div class="table-wrap keep" style="border-radius:0;border-left:0;border-right:0;border-bottom:0;max-height:640px"><table><thead><tr><th class="num">#</th><th>Student ID</th><th>Name</th><th class="num">Attended</th><th class="num">Late</th><th class="num">Attendance</th><th></th></tr></thead>
         <tbody id="stb">${list.map(({ s, i, p }) => `<tr class="clickable" data-stu="${esc(s.student_id)}" data-q="${esc((s.student_id + " " + s.name).toLowerCase())}">
           <td class="num faint">${i + 1}</td><td><b>${esc(s.student_id)}</b></td><td>${esc(s.name) || `<span class="faint">—</span>`}</td>
-          <td class="num">${p.h ? `${p.a} / ${p.h}` : "—"}</td><td class="num">${p.l || ""}</td>
+          <td class="num">${p.h ? `${p.a} / ${p.h}` : "—"}</td><td class="num">${p.l || `<span class="faint">—</span>`}</td>
           <td>${p.h ? `<div class="pct-cell">${App.progress(p.p, min)}<b class="${App.pctClass(p.p, min)}">${p.p}%</b></div>` : `<span class="faint" style="float:right">—</span>`}</td>
           <td class="actions"><button class="icon-btn" data-pf="${esc(s.student_id)}" title="Portfolio">${icon("book")}</button><button class="icon-btn" data-edit-stu="${s.id}" title="Edit">${icon("edit")}</button><button class="icon-btn danger" data-del-stu="${s.id}" title="Remove">${icon("trash")}</button></td></tr>`).join("")}
           ${list.length ? "" : `<tr><td colspan="7"><div class="empty" style="padding:20px">No students match this filter.</div></td></tr>`}</tbody></table></div>`
@@ -883,15 +884,16 @@
         <div class="btn-group"><button class="btn sm secondary" id="print">${icon("printer")} Print</button><button class="btn sm secondary" id="xls2">${icon("download")} Excel</button></div></div>
       <div style="padding:0 24px 16px" class="legend"><span><span class="mk P">P</span>Present</span><span><span class="mk L">L</span>Late</span><span><span class="mk E">E</span>Excused</span><span><span class="mk A">A</span>Absent</span><span><span class="mk N"></span>Not Held</span><span><span class="mk P manual">P</span>Marked by You</span><span class="faint">· Click a cell to change it, or a class number for bulk actions</span></div>
       ${students.length && cols.length ? `<div class="table-wrap keep" style="max-height:640px;border-radius:0;border-left:0;border-right:0;border-bottom:0"><table class="matrix"><thead>
-        <tr><th class="sticky" rowspan="2">Student ID</th><th rowspan="2" class="name">Name</th>${ts.map((t) => t.classes.length ? `<th class="term" colspan="${t.classes.length}">${esc(t.name)}</th>` : "").join("")}<th rowspan="2" class="num">Total</th><th rowspan="2" class="num" style="padding-right:16px">%</th></tr>
+        <tr><th class="sticky" rowspan="2">Student ID</th><th rowspan="2" class="name sticky2">Name</th>${ts.map((t) => t.classes.length ? `<th class="term" colspan="${t.classes.length}">${esc(t.name)}</th>` : "").join("")}<th rowspan="2" class="num">Total</th><th rowspan="2" class="num" style="padding-right:16px">%</th></tr>
         <tr>${cols.map(({ c }) => `<th class="cls ${isHeld(c) ? "" : "nh"}" data-cls="${c.id}" title="${App.classLabel(c.number)}${c.class_date ? " · " + App.fmtDay(c.class_date) : ""}${c.title ? " · " + esc(c.title) : ""}">${App.pad2(c.number)}</th>`).join("")}</tr></thead>
         <tbody id="mtb">${shown.map((s) => {
           const p = X.per[s.student_id];
           const cells = cols.map(({ c }) => { const a = recs(c.id)[s.student_id], k = a ? STATUS[a.status].k : isHeld(c) ? "A" : "N";
             return `<td class="cell" data-c="${c.id}" data-s="${esc(s.student_id)}"><span class="mk ${k} ${a && a.source === "manual" ? "manual" : ""}">${k === "N" ? "" : k}</span></td>`; }).join("");
-          return `<tr data-q="${esc((s.student_id + " " + s.name).toLowerCase())}"><td class="sticky"><b>${esc(s.student_id)}</b></td><td class="name" title="${esc(s.name)}">${esc(s.name)}</td>${cells}
+          return `<tr data-q="${esc((s.student_id + " " + s.name).toLowerCase())}"><td class="sticky"><b>${esc(s.student_id)}</b></td><td class="name sticky2" title="${esc(s.name)}">${esc(s.name)}</td>${cells}
             <td class="num"><b>${p.a}</b><span class="faint">/${p.h}</span></td><td class="num ${App.pctClass(p.p, min)}" style="padding-right:16px;font-weight:700">${p.p == null ? "—" : p.p + "%"}</td></tr>`;
         }).join("")}</tbody></table></div>` : `<div class="empty"><div class="ic">${icon("grid")}</div><h3>Nothing to Show Yet</h3><p>Add students and classes first.</p></div>`}</div>`;
+    App.stickyTable($("table.matrix"));
     $("#tsel").onchange = (e) => { ui.term = e.target.value; drawSection(); };
     $("#riskonly").onchange = (e) => { ui.riskOnly = e.target.checked; drawSection(); };
     const filterRows = () => { const v = ui.q.toLowerCase(); $$("#mtb tr").forEach((r) => (r.style.display = !v || r.dataset.q.includes(v) ? "" : "none")); };
@@ -1127,7 +1129,29 @@
     const items = S.assess.filter((a) => a.term_id === T.id).sort(bySort), rows = Grade.termRows(items);
     const cols = rows.flatMap((r) => r.items);
     const R = allResults(), wsum = rows.reduce((n, r) => n + Grade.rowWeight(r), 0);
-    const head = (a) => `${esc(a.name)}<small>/ ${fmt(a.max_marks, 2)} · ${fmt(a.weight, 2)}%${a.co ? ` · ${esc(a.co)}` : ""}${a.by_group ? " · Group" : ""}${a.visible === false ? " · Hidden" : ""}</small>`;
+    const meta = (a) => `<small>/ ${fmt(a.max_marks, 2)} · ${fmt(a.weight, 2)}%${a.co ? ` · ${esc(a.co)}` : ""}${a.by_group ? " · Group" : ""}${a.visible === false ? " · Hidden" : ""}</small>`;
+    const head = (a, label = a.name) => `<span class="hl">${esc(label)}</span>${meta(a)}`;
+    // Split "Quiz 1 · DFA Design · Design" into a shared prefix (merged across columns) and the leaf shown above the inputs
+    const seg = (a) => { const p = String(a.name).split(" · "); return { pre: p.length > 1 ? p.slice(0, -1).join(" · ") : "", leaf: p[p.length - 1] }; };
+    const deep = rows.some((r) => r.group && r.items.some((a) => seg(a).pre));
+    const LV = deep ? 3 : 2;
+    let h2 = "", h3 = "";
+    rows.filter((r) => r.group).forEach((r) => {
+      if (!deep) { h2 += r.items.map((a) => `<th class="it">${head(a)}</th>`).join(""); return; }
+      for (let i = 0; i < r.items.length;) {
+        const a = r.items[i], { pre } = seg(a);
+        if (!pre) { h2 += `<th class="it" rowspan="2">${head(a)}</th>`; i++; continue; }
+        let j = i; while (j < r.items.length && seg(r.items[j]).pre === pre) j++;
+        h2 += `<th class="sub" colspan="${j - i}">${esc(pre)}</th>`;
+        h3 += r.items.slice(i, j).map((x) => `<th class="it">${head(x, seg(x).leaf)}</th>`).join("");
+        i = j;
+      }
+    });
+    const ruleNote = (r) => r.rule === "best" ? "Best Counted" : r.rule === "sum_up" ? "Rounded Up" : r.rule === "avg" ? "Average" : "";
+    const totCell = (r) => (r && r.graded ? fmt(r.total) : `<span class="faint">—</span>`);
+    const grdCell = (r) => { if (!r || !r.graded) return `<span class="faint">—</span>`;
+      const g = r.complete ? r.grade : r.standingGrade; if (!g?.grade) return `<span class="faint">—</span>`;
+      return `<span class="grade-pill sm ${gradeTone(g.grade)} ${r.complete ? "" : "tentative"}" title="${r.complete ? "Term grade" : `Standing so far: ${fmt(r.standing)}% of the marks entered`}">${esc(g.grade)}</span>`; };
     const filled = cols.filter((a) => a.kind !== "attendance").reduce((n, a) => n + S.students.filter((s) => markOf(a.id, s.student_id) != null).length, 0);
     const need = cols.filter((a) => a.kind !== "attendance").length * S.students.length;
     $("#tab").innerHTML = `<div class="card flush">
@@ -1141,15 +1165,15 @@
         <span class="weight-meter ${Math.abs(wsum - 100) < 0.01 ? "ok" : "bad"}">${icon(Math.abs(wsum - 100) < 0.01 ? "check" : "alert")} Term weights add up to ${fmt(wsum, 2)}%</span>
         <span>·</span><span id="mcount">${filled} of ${need} marks entered</span><span>·</span><span>Type a mark and it saves by itself. <span class="kbd">Enter</span> moves down. You can paste a block of marks from Excel.</span></div>
       ${S.students.length ? `<div class="table-wrap keep" style="max-height:640px;border-radius:0;border-left:0;border-right:0;border-bottom:0"><table class="mgrid"><thead>
-        <tr><th class="sticky" rowspan="2">Student ID</th><th class="name" rowspan="2" style="text-align:left">Name</th>
-          ${rows.map((r) => (r.group ? `<th class="grp" colspan="${r.items.length}">${esc(r.label)}${r.rule !== "sum" ? ` <span class="faint">· ${r.rule === "best" ? "Best Counted" : r.rule === "sum_up" ? "Rounded Up" : "Average"}</span>` : ""}</th>` : `<th class="it" rowspan="2">${head(r.items[0])}</th>`)).join("")}
-          <th rowspan="2" class="num">Total<small style="display:block;font-weight:500;color:var(--faint)">/ 100</small></th><th rowspan="2" style="padding-right:20px">Grade</th></tr>
-        <tr>${rows.filter((r) => r.group).flatMap((r) => r.items).map((a) => `<th class="it">${head(a)}</th>`).join("")}</tr></thead>
+        <tr><th class="sticky" rowspan="${LV}">Student ID</th><th class="name sticky2" rowspan="${LV}">Name</th>
+          ${rows.map((r) => (r.group ? `<th class="grp" colspan="${r.items.length}">${esc(r.label)}${ruleNote(r) ? `<span class="rule">${ruleNote(r)}</span>` : ""}</th>` : `<th class="it solo" rowspan="${LV}">${head(r.items[0])}</th>`)).join("")}
+          <th rowspan="${LV}" class="num tot-h">Total<small>/ 100</small></th><th rowspan="${LV}" class="grd-h" title="An outlined grade is the standing on the marks entered so far">Grade</th></tr>
+        <tr>${h2}</tr>${deep ? `<tr>${h3}</tr>` : ""}</thead>
         <tbody id="mtb">${S.students.map((s) => { const tr = R[s.student_id].terms.find((x) => x.term.id === T.id); const A = attByTerm(s.student_id)[T.id];
-          return `<tr data-s="${esc(s.student_id)}" data-q="${esc((s.student_id + " " + s.name).toLowerCase())}"><td class="sticky"><b>${esc(s.student_id)}</b></td><td class="name" title="${esc(s.name)}">${esc(s.name)}</td>
+          return `<tr data-s="${esc(s.student_id)}" data-q="${esc((s.student_id + " " + s.name).toLowerCase())}"><td class="sticky"><b>${esc(s.student_id)}</b></td><td class="name sticky2" title="${esc(s.name)}">${esc(s.name)}</td>
             ${cols.map((a) => a.kind === "attendance" ? `<td class="calc" title="${A.attended} of ${A.held} classes">${A.held ? fmt((A.attended / A.held) * a.max_marks, 2) : "—"}</td>`
               : `<td><input class="mi ${a.by_group ? "grpm" : ""}" inputmode="decimal" data-a="${a.id}" data-max="${a.max_marks}" value="${markOf(a.id, s.student_id) ?? ""}" aria-label="${esc(itemLabel(a))} for ${esc(s.student_id)}" /></td>`).join("")}
-            <td class="tot" data-tot>${fmt(tr.total)}</td><td data-grd style="padding-right:20px"><span class="grade-pill sm ${gradeTone(tr.grade?.grade)}">${esc(tr.grade?.grade || "—")}</span></td></tr>`; }).join("")}</tbody></table></div>`
+            <td class="tot" data-tot>${totCell(tr)}</td><td data-grd class="grd">${grdCell(tr)}</td></tr>`; }).join("")}</tbody></table></div>`
       : `<div class="empty"><div class="ic">${icon("users")}</div><h3>No Students Yet</h3><p>Upload the student list first.</p></div>`}</div>`;
     $$("#mterm button").forEach((b) => (b.onclick = () => { ui.mterm = b.dataset.t; drawSection(); }));
     const filt = () => { const v = ui.q.toLowerCase(); $$("#mtb tr").forEach((r) => (r.style.display = !v || r.dataset.q.includes(v) ? "" : "none")); };
@@ -1157,9 +1181,10 @@
     $("#plan").onclick = planEditor;
     $("#mmenu").onclick = (e) => popover(e.currentTarget, `<button data-v="tpl">${icon("download")} Download Marks Sheet (${esc(T.name)})</button><button data-v="up">${icon("upload")} Upload Marks Sheet</button>`, (v) => (v === "tpl" ? marksTemplate(T) : pickMarksFile(T)));
     const tb = $("#mtb"); if (!tb) return;
+    App.stickyTable($("table.mgrid"));
     const recount = () => { const el = $("#mcount"); if (!el) return; const n = cols.filter((a) => a.kind !== "attendance").reduce((k, a) => k + S.students.filter((x) => markOf(a.id, x.student_id) != null).length, 0); el.textContent = `${n} of ${need} marks entered`; };
     const recalc = (tr) => { recount(); const s = S.students.find((x) => x.student_id === tr.dataset.s), r = resultOf(s).terms.find((x) => x.term.id === T.id);
-      tr.querySelector("[data-tot]").textContent = fmt(r.total); tr.querySelector("[data-grd]").innerHTML = `<span class="grade-pill sm ${gradeTone(r.grade?.grade)}">${esc(r.grade?.grade || "—")}</span>`; };
+      tr.querySelector("[data-tot]").innerHTML = totCell(r); tr.querySelector("[data-grd]").innerHTML = grdCell(r); };
     const apply = (inp) => {
       const raw = inp.value.trim(), max = +inp.dataset.max, tr = inp.closest("tr");
       if (raw === "") { inp.classList.remove("bad"); queueMark(inp.dataset.a, tr.dataset.s, null); return recalc(tr); }
@@ -1436,8 +1461,9 @@
     const list = S.students.map((s, i) => { const r = R[s.student_id], fin = r.complete || !!r.grade?.special;
       return { s, i, r, fin, key: fin ? r.overall : r.standing ?? 0, g: fin ? r.grade : r.standingGrade }; });
     const anyOpen = list.some((x) => !x.fin);
-    const totals = list.map((x) => x.key), avg = totals.length ? totals.reduce((n, x) => n + x, 0) / totals.length : null;
-    const pass = list.filter((x) => x.g && x.g.grade !== "F" && !x.g.special).length;
+    // Only students who have at least one graded mark count towards the section figures
+    const counted = list.filter((x) => x.fin || x.r.standing != null), totals = counted.map((x) => x.key), avg = totals.length ? totals.reduce((n, x) => n + x, 0) / totals.length : null;
+    const pass = counted.filter((x) => x.g && x.g.grade !== "F" && !x.g.special).length;
     const dist = scale.map((g) => ({ g: g.grade, n: list.filter((x) => x.g?.grade === g.grade).length })), dmax = Math.max(1, ...dist.map((d) => d.n));
     const coCodes = [...new Set(list.flatMap((x) => x.r.coList.map((c) => c.code)))];
     const coSum = coCodes.map((code) => { const xs = list.map((x) => x.r.coList.find((c) => c.code === code)).filter((c) => c && c.pct != null);
@@ -1445,16 +1471,16 @@
     const sorters = { seq: (a, b) => a.i - b.i, high: (a, b) => b.key - a.key, low: (a, b) => a.key - b.key, id: (a, b) => a.s.student_id.localeCompare(b.s.student_id) };
     list.sort(sorters[ui.rsort] || sorters.seq);
     $("#tab").innerHTML = `
-      <div class="card" style="margin-bottom:20px"><div class="row center-y" style="gap:16px">
-        <div class="stat" style="border:0;box-shadow:none;padding:0;background:none"><div class="ic ${S.sec.portfolio_published ? "green" : ""}">${icon(S.sec.portfolio_published ? "eye" : "eyeoff")}</div></div>
+      <div class="card" style="margin-bottom:20px;padding-top:18px;padding-bottom:18px"><div class="row center-y" style="gap:16px">
+        <div class="stat" style="border:0;box-shadow:none;padding:0;background:none;min-height:0"><div class="ic ${S.sec.portfolio_published ? "green" : ""}">${icon(S.sec.portfolio_published ? "eye" : "eyeoff")}</div></div>
         <div class="grow"><b>${S.sec.portfolio_published ? "Portfolios Are Published" : "Portfolios Are Not Published Yet"}</b>
           <div class="small muted">${S.sec.portfolio_published ? "Students see their marks, grade, COs and attendance in the Student Portal by typing their ID. Items marked Hidden in the plan are not shown." : "Students can still mark attendance. Publish when you want them to see their marks and grades."}</div></div>
         <label class="switch" style="align-items:center"><input type="checkbox" id="pub" ${S.sec.portfolio_published ? "checked" : ""} /> <b>Show to Students</b></label></div></div>
       <div class="stats" style="margin-bottom:20px">
-        <div class="stat"><div class="ic">${icon("chart")}</div><div><div class="k">Section Average${anyOpen ? " (So Far)" : ""}</div><div class="v">${fmt(avg)}</div></div></div>
-        <div class="stat"><div class="ic green">${icon("zap")}</div><div><div class="k">Highest</div><div class="v">${fmt(Math.max(...totals))}</div></div></div>
-        <div class="stat"><div class="ic amber">${icon("target")}</div><div><div class="k">Lowest</div><div class="v">${fmt(Math.min(...totals))}</div></div></div>
-        <div class="stat"><div class="ic violet">${icon("check")}</div><div><div class="k">Passing (D or Above)</div><div class="v">${pass}<small> / ${list.length}</small></div></div></div></div>
+        <div class="stat"><div class="ic">${icon("chart")}</div><div><div class="k">Section Average${anyOpen ? " (So Far)" : ""}</div><div class="v">${avg == null ? "—" : fmt(avg)}</div></div></div>
+        <div class="stat"><div class="ic green">${icon("zap")}</div><div><div class="k">Highest</div><div class="v">${totals.length ? fmt(Math.max(...totals)) : "—"}</div></div></div>
+        <div class="stat"><div class="ic amber">${icon("target")}</div><div><div class="k">Lowest</div><div class="v">${totals.length ? fmt(Math.min(...totals)) : "—"}</div></div></div>
+        <div class="stat"><div class="ic violet">${icon("check")}</div><div><div class="k">Passing (D or Above)</div><div class="v">${pass}<small> / ${counted.length}${counted.length < list.length ? ` graded` : ""}</small></div></div></div></div>
       <div class="grid cols-2" style="margin-bottom:20px;align-items:start">
         <div class="card"><div class="card-head"><div><h2>Grade Distribution</h2><div class="sub">${anyOpen ? "Current standing — based on the marks entered so far" : "Final Grades"}</div></div></div>
           <div class="dist">${dist.map((d) => `<div class="d ${d.g === "F" ? "F" : ""}"><b>${d.n}</b><div class="f" style="height:${(d.n / dmax) * 75}%"></div><span>${esc(d.g)}</span></div>`).join("")}</div></div>

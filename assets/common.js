@@ -180,6 +180,20 @@
     async copy(text, msg = "Copied") { try { await navigator.clipboard.writeText(text); App.toast(msg); } catch { App.toast("Copy Failed — Select and Copy Manually", true); } },
 
     // Supabase returns at most 1000 rows per request; page through larger results
+    // Stack multi-row sticky table headers (each row sits under the one above) and pin the Name column next to the ID column
+    stickyTable(tbl) {
+      if (!tbl) return;
+      const fit = () => {
+        if (!tbl.isConnected) return window.removeEventListener("resize", fit);
+        const head = tbl.tHead; if (!head) return;
+        const top0 = head.getBoundingClientRect().top;
+        [...head.rows].forEach((r) => { const t = Math.round(r.getBoundingClientRect().top - top0); [...r.cells].forEach((c) => (c.style.top = t + "px")); });
+        const first = tbl.querySelector("thead .sticky"), w = first ? first.getBoundingClientRect().width : 0;
+        tbl.querySelectorAll(".sticky2").forEach((c) => (c.style.left = w + "px"));
+      };
+      fit(); requestAnimationFrame(fit); document.fonts?.ready.then(fit);
+      window.addEventListener("resize", fit);
+    },
     async fetchAll(build) {
       const out = []; const size = 1000;
       for (let from = 0; ; from += size) {

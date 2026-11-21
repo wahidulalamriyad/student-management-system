@@ -102,6 +102,7 @@
       const g = gradeFor(total, ctx.scale, ctx.round);
       const tComplete = !missing && !pending && !(planned && A.held < planned);
       out.terms.push({ term: t, weightShare: tw(t), rows, total: r2(total), possible, missing, pending, grade: tgW > 0.01 ? g : null, graded: tgW > 0.01, complete: tComplete, att: A,
+        standing: tgW > 0.01 ? r2((tgC / tgW) * 100) : null, standingGrade: tgW > 0.01 ? gradeFor(r2((tgC / tgW) * 100), ctx.scale, ctx.round) : null,
         attPct: A.held ? Math.round((A.attended / A.held) * 100) : null, empty: items.length === 0 });
       out.overall += total * tw(t); gW += tgW * tw(t); gC += tgC * tw(t);
       if (missing || pending || (planned && A.held < planned)) out.complete = false;
@@ -233,7 +234,7 @@
           <div class="pf-name"><b>${esc(row.label)}</b>${row.co ? ` <span class="co-tag">${esc(row.co)}</span>` : ""}${row.rule === "best" ? ` <span class="faint xs">· Best Counted</span>` : row.rule === "sum_up" ? ` <span class="faint xs">· Rounded Up</span>` : ""}${isAtt && T.att.planned ? `<div class="xs faint">${T.att.attended} attended · ${T.att.held} of ${T.att.planned} classes held</div>` : ""}</div>
           <div class="pf-score">${scoreTxt}</div>
           ${(() => { const bar = isAtt ? (T.att.held ? T.att.attended / T.att.held : null) : row.ratio; return `<div class="pf-contrib"><div class="progress ${bar != null && bar < (isAtt ? minAtt / 100 : 0.5) ? "bad" : bar != null && bar < 0.7 ? "warn" : ""}"><span style="width:${(bar || 0) * 100}%"></span></div>`; })()}
-            <span><b>${row.pending ? "—" : fmt(row.contrib, 2)}</b><span class="faint"> / ${fmt(row.weight, 2)}</span></span></div>
+            <span><b>${row.pending || row.score == null ? "—" : fmt(row.contrib, 2)}</b><span class="faint"> / ${fmt(row.weight, 2)}</span></span></div>
           <div class="pf-avg">${sAvg != null ? `${fmt(sAvg, 1)}<span class="faint"> Avg</span>` : ""}</div>${sub}</div>`;
       }).join("");
       const tg = T.grade || {};
